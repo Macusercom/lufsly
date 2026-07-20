@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#0d0d0d" />
+  <meta name="robots" content="noindex" />
+  <title>Imprint – LevelCheck</title>
+  <link rel="icon" type="image/png" sizes="32x32" href="icons/icon32.png" />
+  <link rel="icon" type="image/png" sizes="16x16" href="icons/icon16.png" />
+  <link rel="apple-touch-icon" href="icons/icon128.png" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body data-title-key="imprintPageTitle">
+
+  <div class="topbar">
+    <div class="lang-toggle">
+      <button class="lang-btn" type="button" data-lang="de">DE</button>
+      <button class="lang-btn" type="button" data-lang="en">EN</button>
+    </div>
+  </div>
+
+  <header class="hero">
+    <img class="logo" src="icons/icon128.png" alt="" />
+    <h1 data-i18n="appName">LevelCheck</h1>
+    <p class="tagline" data-i18n="imprintTitle">Legal Notice</p>
+  </header>
+
+  <nav class="back-nav"><a href="index.html" data-i18n="backToApp">← Back to the app</a></nav>
+
+  <main>
+    <section class="card legal-content" data-i18n-html="imprintBody"></section>
+  </main>
+
+  <footer>
+    <p class="footer-links">
+      <a href="index.html" data-i18n="backToLevelCheck">← Back to LevelCheck</a>
+      ·
+      <a href="privacy.html" data-i18n="footerPrivacy">Privacy Policy</a>
+    </p>
+  </footer>
+
+  <script type="module">
+    import { initLang } from './i18n.js';
+    initLang();
+  </script>
+</body>
+</html>

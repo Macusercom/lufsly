@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#0d0d0d" />
+  <meta name="description" content="Analyze LUFS, True Peak and dynamic range of your audio files entirely in your browser. No upload, no account, no tracking." />
+  <title>LevelCheck – LUFS, True Peak &amp; Dynamic Range Analyzer</title>
+  <link rel="icon" type="image/png" sizes="32x32" href="icons/icon32.png" />
+  <link rel="icon" type="image/png" sizes="16x16" href="icons/icon16.png" />
+  <link rel="apple-touch-icon" href="icons/icon128.png" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body data-title-key="indexPageTitle">
+
+  <div class="topbar">
+    <div class="lang-toggle">
+      <button class="lang-btn" type="button" data-lang="de">DE</button>
+      <button class="lang-btn" type="button" data-lang="en">EN</button>
+    </div>
+  </div>
+
+  <header class="hero">
+    <img class="logo" src="icons/icon128.png" alt="" />
+    <h1 data-i18n="appName">LevelCheck</h1>
+    <p class="tagline" data-i18n="tagline">Measure LUFS, True Peak and dynamic range of your audio files — right in your browser.</p>
+    <p class="privacy-note" data-i18n="privacyNote">Your files never leave your device. No upload, no account, no tracking.</p>
+  </header>
+
+  <main>
+    <section>
+      <div id="drop-zone" role="button" tabindex="0" aria-labelledby="drop-title">
+        <div class="drop-icon" aria-hidden="true">⬇</div>
+        <p class="drop-title" id="drop-title" data-i18n="dropTitle">Drop audio files here</p>
+        <p class="drop-sub" data-i18n="dropSub">or click to choose files</p>
+        <p class="drop-formats" data-i18n="dropFormats">WAV, MP3, FLAC, M4A, OGG — whatever your browser can decode. Several files at once are fine.</p>
+      </div>
+      <div id="analyze-progress" hidden>
+        <span id="progress-text"></span>
+        <div class="progress-bar"><div class="progress-fill" id="progress-fill"></div></div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2 data-i18n="targetsTitle">Targets</h2>
+      <p class="card-hint" data-i18n="targetsHint">Your targets are saved in this browser and applied to every analysis.</p>
+
+      <div class="field-grid">
+        <div class="field">
+          <label for="preset" data-i18n="presetLabel">Target</label>
+          <select id="preset">
+            <option value="podcast" data-i18n="presetPodcast">Podcast (−16 LUFS)</option>
+            <option value="streaming" data-i18n="presetStreaming">Streaming (−14 LUFS)</option>
+            <option value="broadcast" data-i18n="presetBroadcast">Broadcast EBU R128 (−23 LUFS)</option>
+            <option value="custom" data-i18n="presetCustom">Custom</option>
+            <option value="none" data-i18n="presetNone">None</option>
+          </select>
+        </div>
+
+        <div class="field" id="custom-target-field" hidden>
+          <label for="custom-target" data-i18n="customTarget">Loudness target</label>
+          <div class="with-unit">
+            <input type="number" id="custom-target" step="0.5" min="-40" max="0" value="-16" />
+            <span class="unit">LUFS</span>
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="tolerance" data-i18n="toleranceLabel">Tolerance</label>
+          <div class="with-unit">
+            <input type="number" id="tolerance" step="0.1" min="0" max="10" value="1" />
+            <span class="unit">LU</span>
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="tp-limit" data-i18n="tpLimitLabel">True Peak limit</label>
+          <div class="with-unit">
+            <input type="number" id="tp-limit" step="0.1" min="-10" max="0" value="-1" />
+            <span class="unit">dBTP</span>
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="dr-mode" data-i18n="drTargetLabel">Dynamic range target</label>
+          <select id="dr-mode">
+            <option value="auto" data-i18n="drTargetAuto">Automatic (from target)</option>
+            <option value="custom" data-i18n="drTargetCustom">Custom</option>
+          </select>
+        </div>
+
+        <div class="field" id="dr-custom-field" hidden>
+          <label for="dr-target" data-i18n="drCustomValue">Target LRA</label>
+          <div class="with-unit">
+            <input type="number" id="dr-target" step="0.5" min="0.5" max="30" value="4" />
+            <span class="unit">LU</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="targets-foot">
+        <button type="button" id="btn-reset-targets" data-i18n="resetTargets">Reset to defaults</button>
+      </div>
+    </section>
+
+    <section class="card" id="queue-card" hidden>
+      <h2 data-i18n="queueTitle">Analyzed files</h2>
+      <p class="card-hint" data-i18n="queueHint">Click a file to see its full report.</p>
+      <div class="queue-head" aria-hidden="true">
+        <span data-i18n="colFile">File</span>
+        <span data-i18n="colIntegrated">Integrated</span>
+        <span data-i18n="colTruePeak">True Peak</span>
+        <span data-i18n="colLra">LRA</span>
+        <span></span>
+      </div>
+      <div id="queue-list"></div>
+      <div class="queue-foot">
+        <button type="button" id="btn-clear-queue" data-i18n="clearQueue">Clear all</button>
+      </div>
+    </section>
+
+    <section class="card" id="report" hidden>
+      <h2 data-i18n="reportTitle">Analysis report</h2>
+      <p class="report-filename" id="report-file"></p>
+
+      <div id="report-verdicts"></div>
+
+      <h3 data-i18n="dynamicsTitle">Dynamic range</h3>
+      <div class="dr-bar" id="dr-bar"></div>
+      <div class="dr-scale" id="dr-scale"></div>
+
+      <table><tbody id="report-table"></tbody></table>
+
+      <h3 data-i18n="loudnessHistory">Short-term loudness over time</h3>
+      <div class="chart-wrap">
+        <canvas id="report-chart"></canvas>
+        <div id="chart-tip" hidden></div>
+      </div>
+
+      <div class="report-actions">
+        <button type="button" id="btn-copy" data-i18n="copyReport">Copy</button>
+        <button type="button" id="btn-save-png" data-i18n="savePng">Save PNG</button>
+        <button type="button" id="btn-save-pdf" data-i18n="savePdf">Save PDF</button>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2 data-i18n="howTitle">How it works</h2>
+      <ol class="how-list">
+        <li data-i18n="howStep1"></li>
+        <li data-i18n="howStep2"></li>
+        <li data-i18n="howStep3"></li>
+        <li data-i18n="howStep4"></li>
+      </ol>
+      <p class="standards-note" data-i18n="standardsNote"></p>
+    </section>
+  </main>
+
+  <footer>
+    <p data-i18n="privacyNote">Your files never leave your device. No upload, no account, no tracking.</p>
+    <p class="footer-links">
+      <a href="https://github.com/Macusercom/levelcheck" target="_blank" rel="noopener" data-i18n="footerSource">Source code</a>
+      ·
+      <a href="privacy.html" data-i18n="footerPrivacy">Privacy Policy</a>
+      ·
+      <a href="imprint.html" data-i18n="footerImprint">Imprint</a>
+    </p>
+  </footer>
+
+  <div id="drop-overlay" data-i18n="dropOverlay" hidden>Drop the files to analyze them</div>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
