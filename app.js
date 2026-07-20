@@ -261,6 +261,9 @@ function removeEntry(id) {
 }
 
 $('btn-clear-queue').addEventListener('click', () => {
+  // Also abandons anything still waiting; the file being analyzed right now
+  // has no cancellation point, so it finishes and lands in the empty list.
+  pending.length = 0;
   queue = [];
   activeId = null;
   report.hide();
@@ -287,17 +290,33 @@ function setError(text) {
 }
 
 // Files are processed one at a time: a single decoded AudioBuffer at a time
-// keeps memory sane when several long WAVs are dropped together.
-async function enqueueFiles(files) {
+// keeps memory sane when several long WAVs are dropped together. Anything
+// arriving mid-run joins the backlog instead of being turned away, so a drop
+// during a long analysis is never silently lost.
+const pending = [];
+
+function enqueueFiles(files) {
   const list = Array.from(files).filter((f) => f && f.size > 0);
-  if (!list.length || analyzing) return;
+  if (!list.length) return;
+  pending.push(...list);
+  if (!analyzing) drainPending();
+}
+
+// Progress line doubles as the queue depth, so a waiting batch is visible.
+function progressText(key, subs) {
+  const line = msg(key, subs);
+  return pending.length ? `${line} · ${msg('queueWaiting', [pending.length])}` : line;
+}
+
+async function drainPending() {
   analyzing = true;
 
-  for (const file of list) {
-    setProgress(msg('decoding', [file.name]), 0);
+  while (pending.length) {
+    const file = pending.shift();
+    setProgress(progressText('decoding', [file.name]), 0);
     try {
       const result = await analyzeFile(file, (frac) => {
-        setProgress(msg('analyzing', [file.name, String(Math.round(frac * 100))]), frac);
+        setProgress(progressText('analyzing', [file.name, String(Math.round(frac * 100))]), frac);
       });
       const entry = { id: nextId++, fileName: file.name, ...result };
       queue.push(entry);

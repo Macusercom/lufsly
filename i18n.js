@@ -19,6 +19,7 @@ const EN = {
   dropOverlay: 'Drop the files to analyze them',
   analyzing: 'Analyzing $NAME$… $PCT$ %',
   decoding: 'Decoding $NAME$…',
+  queueWaiting: '$N$ more waiting',
   decodeError: 'Could not decode this file.',
 
   // ---- targets ----
@@ -134,6 +135,7 @@ const DE = {
   dropOverlay: 'Dateien loslassen, um sie zu analysieren',
   analyzing: 'Analysiere $NAME$… $PCT$ %',
   decoding: 'Dekodiere $NAME$…',
+  queueWaiting: 'noch $N$ in der Warteschlange',
   decodeError: 'Diese Datei konnte nicht dekodiert werden.',
 
   targetsTitle: 'Ziele',
