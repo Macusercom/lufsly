@@ -117,13 +117,10 @@ function applySettingsToUi() {
   $('tp-limit').value = settings.tpLimit;
   $('dr-mode').value = settings.drMode;
   $('dr-target').value = settings.drTarget;
-  // Each inline value input widens its own field rather than becoming one.
-  const showTarget = settings.preset === 'custom';
-  const showDr = settings.drMode === 'custom';
-  $('custom-target-field').hidden = !showTarget;
-  $('dr-custom-field').hidden = !showDr;
-  $('target-field').classList.toggle('wide', showTarget);
-  $('dr-field').classList.toggle('wide', showDr);
+  // Each inline value input appears beside its own select rather than
+  // becoming a field of its own; the grid column already has room for both.
+  $('custom-target-field').hidden = settings.preset !== 'custom';
+  $('dr-custom-field').hidden = settings.drMode !== 'custom';
 }
 
 // Everything that depends on the targets, re-scored from stored stats.

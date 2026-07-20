@@ -8,7 +8,7 @@
 const LANG_KEY = 'lufsly-lang';
 
 const EN = {
-  appName: 'LUFSly',
+  appName: 'LUFSly – Loudness Meter',
   tagline: 'Measure LUFS, True Peak and dynamic range of your audio files — right in your browser.',
   privacyNote: 'Your files never leave your device. No upload, no account, no tracking.',
 
@@ -107,10 +107,11 @@ const EN = {
   howStep2: 'Everything is decoded and measured locally in your browser — nothing is uploaded.',
   howStep3: 'Set your target above. Podcast is −16 LUFS, streaming −14 LUFS, EBU R128 broadcast −23 LUFS.',
   howStep4: 'Open a file from the list to see its full report, then copy it or save it as PNG or PDF.',
-  standardsNote: 'Measurement follows ITU-R BS.1770-4 / EBU R128 — K-weighting, two-stage gating, and a 4× oversampled True Peak meter, the same engine as the LUFSly Chrome extension.',
+  standardsNote: 'Measurement follows ITU-R BS.1770-4 / EBU R128 — K-weighting, two-stage gating, and a 4× oversampled True Peak meter, the same engine as the <a href="https://github.com/Macusercom/lufsly-extension" target="_blank" rel="noopener">LUFSly Chrome extension</a>.',
 
   // ---- chrome ----
   footerSource: 'Source code',
+  footerExtension: 'Chrome extension',
   footerPrivacy: 'Privacy Policy',
   footerImprint: 'Imprint',
   backToApp: '← Back to the app',
@@ -123,8 +124,8 @@ const EN = {
 };
 
 const DE = {
-  appName: 'LUFSly',
-  tagline: 'Miss LUFS, True Peak und Dynamikumfang deiner Audiodateien — direkt im Browser.',
+  appName: 'LUFSly – Loudness Meter',
+  tagline: 'LUFS, True Peak und Dynamikumfang deiner Audiodateien messen — direkt im Browser.',
   privacyNote: 'Deine Dateien verlassen dein Gerät nicht. Kein Upload, kein Konto, kein Tracking.',
 
   dropTitle: 'Audiodateien hierher ziehen',
@@ -215,9 +216,10 @@ const DE = {
   howStep2: 'Alles wird lokal im Browser dekodiert und gemessen — es wird nichts hochgeladen.',
   howStep3: 'Stelle oben dein Ziel ein. Podcast sind −16 LUFS, Streaming −14 LUFS, EBU-R128-Broadcast −23 LUFS.',
   howStep4: 'Öffne eine Datei aus der Liste, um den vollständigen Bericht zu sehen, und kopiere ihn oder speichere ihn als PNG oder PDF.',
-  standardsNote: 'Die Messung folgt ITU-R BS.1770-4 / EBU R128 — K-Weighting, zweistufiges Gating und ein 4× oversampeltes True-Peak-Meter, dieselbe Engine wie in der LUFSly-Chrome-Erweiterung.',
+  standardsNote: 'Die Messung folgt ITU-R BS.1770-4 / EBU R128 — K-Weighting, zweistufiges Gating und ein 4× oversampeltes True-Peak-Meter, dieselbe Engine wie in der <a href="https://github.com/Macusercom/lufsly-extension" target="_blank" rel="noopener">LUFSly-Chrome-Erweiterung</a>.',
 
   footerSource: 'Quellcode',
+  footerExtension: 'Chrome-Erweiterung',
   footerPrivacy: 'Datenschutz',
   footerImprint: 'Impressum',
   backToApp: '← Zurück zur App',

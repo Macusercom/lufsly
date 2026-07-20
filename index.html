@@ -46,7 +46,7 @@
       <p class="card-hint" data-i18n="targetsHint">Your targets are saved in this browser and applied to every analysis.</p>
 
       <div class="field-grid">
-        <div class="field" id="target-field">
+        <div class="field">
           <label for="preset" data-i18n="presetLabel">Target</label>
           <div class="control-row">
             <select id="preset">
@@ -64,19 +64,11 @@
           </div>
         </div>
 
-        <div class="field narrow">
+        <div class="field">
           <label for="tolerance" data-i18n="toleranceLabel">Tolerance</label>
           <div class="with-unit">
             <input type="number" id="tolerance" step="0.1" min="0" max="10" value="1" />
             <span class="unit">LU</span>
-          </div>
-        </div>
-
-        <div class="field narrow">
-          <label for="tp-limit" data-i18n="tpLimitLabel">True Peak limit</label>
-          <div class="with-unit">
-            <input type="number" id="tp-limit" step="0.1" min="-10" max="0" value="-1" />
-            <span class="unit">dBTP</span>
           </div>
         </div>
 
@@ -92,6 +84,14 @@
                      data-i18n-aria="drCustomValue" />
               <span class="unit">LU</span>
             </div>
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="tp-limit" data-i18n="tpLimitLabel">True Peak limit</label>
+          <div class="with-unit">
+            <input type="number" id="tp-limit" step="0.1" min="-10" max="0" value="-1" />
+            <span class="unit">dBTP</span>
           </div>
         </div>
       </div>
@@ -150,13 +150,15 @@
         <li data-i18n="howStep3"></li>
         <li data-i18n="howStep4"></li>
       </ol>
-      <p class="standards-note" data-i18n="standardsNote"></p>
+      <p class="standards-note" data-i18n-html="standardsNote"></p>
     </section>
   </main>
 
   <footer>
     <p class="footer-links">
       <a href="https://github.com/Macusercom/lufsly" target="_blank" rel="noopener" data-i18n="footerSource">Source code</a>
+      ·
+      <a href="https://github.com/Macusercom/lufsly-extension" target="_blank" rel="noopener" data-i18n="footerExtension">Chrome extension</a>
       ·
       <a href="privacy.html" data-i18n="footerPrivacy">Privacy Policy</a>
       ·

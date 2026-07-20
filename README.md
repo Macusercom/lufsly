@@ -1,6 +1,6 @@
 <img src="icons/icon128.png" alt="LUFSly icon" height="100">
 
-# LUFSly
+# LUFSly – Loudness Meter (Web)
 A privacy-first web app that measures the loudness (LUFS), True Peak and dynamic range of your audio files. Drop in a file — or a whole batch — and get a full EBU R128 report with a loudness graph you can copy, or save as PNG or PDF. Everything runs locally in your browser: no upload, no account, no tracking.
 
 🌐 **[Try it live → macusercom.github.io/lufsly](https://macusercom.github.io/lufsly/)**
@@ -23,7 +23,12 @@ A privacy-first web app that measures the loudness (LUFS), True Peak and dynamic
 - German and English UI, follows your browser language
 - No audio or data ever leaves your machine
 
-Measurement follows ITU-R BS.1770-4 / EBU R128 (K-weighting, two-stage gating) using the same DSP core as the LUFSly Chrome extension, so results match between the two.
+Measurement follows ITU-R BS.1770-4 / EBU R128 (K-weighting, two-stage gating) using the same DSP core as the [LUFSly Chrome extension](https://github.com/Macusercom/lufsly-extension), so results match between the two.
+
+
+## Chrome Extension
+
+**[LUFSly for Chrome](https://github.com/Macusercom/lufsly-extension)** is the companion extension: live LUFS, True Peak and dynamic range metering of browser tab audio, plus the same drag & drop file analysis and PNG/PDF reports. It runs the same DSP core as this web app, so both report identical numbers for identical audio.
 
 
 ## How To Use

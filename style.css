@@ -175,13 +175,12 @@ main {
 
 /* ---------- targets ---------- */
 
-/* Selects need room for their labels; the numeric fields hold two or three
-   digits, so they stay narrow and the whole set fits on one row. */
-.field-grid { display: flex; flex-wrap: wrap; gap: 14px; }
-/* Capped so a field that wraps onto a row of its own keeps a sane width
-   instead of stretching edge to edge. */
-.field { display: flex; flex-direction: column; gap: 6px; min-width: 0; flex: 1 1 200px; max-width: 380px; }
-.field.narrow { flex: 0 1 160px; }
+/* Two fixed columns, so the set is two rows at any width rather than
+   reflowing between one and four. The selects need room for their labels and
+   share the left column; the numeric limits hold two or three digits and sit
+   together in the narrower right one. */
+.field-grid { display: grid; grid-template-columns: minmax(0, 1fr) 220px; gap: 16px 20px; }
+.field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 .field label { color: var(--ink-2); font-size: 13px; display: flex; align-items: center; }
 .field select, .field input[type="number"] { width: 100%; }
 /* A "Custom" choice reveals its value input beside its own select, so the two
@@ -190,10 +189,12 @@ main {
 .control-row select { flex: 1 1 auto; min-width: 0; }
 .inline-extra { flex: 0 0 auto; }
 .inline-extra input[type="number"] { width: 84px; }
-.field.wide { flex: 1 1 330px; }
 .field .with-unit { display: flex; align-items: center; gap: 8px; }
 .field .with-unit input { flex: 1; min-width: 0; }
 .field .unit { color: var(--muted); font-size: 13px; white-space: nowrap; }
+/* "LU" and "dBTP" differ in width; reserving the wider one keeps the two
+   number inputs the same size so the right column has a straight edge. */
+.field > .with-unit > .unit { min-width: 34px; }
 .targets-foot { margin-top: 16px; display: flex; justify-content: flex-end; }
 .targets-foot button { font-size: 13px; padding: 6px 12px; color: var(--muted); }
 
@@ -372,6 +373,8 @@ footer {
 /* ---------- narrow screens ---------- */
 
 @media (max-width: 640px) {
+  /* The 220px number column no longer earns its width here. */
+  .field-grid { grid-template-columns: minmax(0, 1fr); }
   .queue-head { display: none; }
   .queue-item {
     grid-template-columns: 1fr auto;
