@@ -5,10 +5,10 @@
 // _locales/{en,de}/messages.json; the legal bodies are taken verbatim from
 // the V-Checker site.
 
-const LANG_KEY = 'levelcheck-lang';
+const LANG_KEY = 'lufsly-lang';
 
 const EN = {
-  appName: 'LevelCheck',
+  appName: 'LUFSly',
   tagline: 'Measure LUFS, True Peak and dynamic range of your audio files — right in your browser.',
   privacyNote: 'Your files never leave your device. No upload, no account, no tracking.',
 
@@ -107,23 +107,23 @@ const EN = {
   howStep2: 'Everything is decoded and measured locally in your browser — nothing is uploaded.',
   howStep3: 'Set your target above. Podcast is −16 LUFS, streaming −14 LUFS, EBU R128 broadcast −23 LUFS.',
   howStep4: 'Open a file from the list to see its full report, then copy it or save it as PNG or PDF.',
-  standardsNote: 'Measurement follows ITU-R BS.1770-4 / EBU R128 — K-weighting, two-stage gating, and a 4× oversampled True Peak meter, the same engine as the LevelCheck Chrome extension.',
+  standardsNote: 'Measurement follows ITU-R BS.1770-4 / EBU R128 — K-weighting, two-stage gating, and a 4× oversampled True Peak meter, the same engine as the LUFSly Chrome extension.',
 
   // ---- chrome ----
   footerSource: 'Source code',
   footerPrivacy: 'Privacy Policy',
   footerImprint: 'Imprint',
   backToApp: '← Back to the app',
-  backToLevelCheck: '← Back to LevelCheck',
+  backToLUFSly: '← Back to LUFSly',
   imprintTitle: 'Legal Notice',
   privacyTitle: 'Privacy Policy',
-  imprintPageTitle: 'Imprint – LevelCheck',
-  privacyPageTitle: 'Privacy – LevelCheck',
-  indexPageTitle: 'LevelCheck – LUFS, True Peak & Dynamic Range Analyzer',
+  imprintPageTitle: 'Imprint – LUFSly',
+  privacyPageTitle: 'Privacy – LUFSly',
+  indexPageTitle: 'LUFSly – LUFS, True Peak & Dynamic Range Analyzer',
 };
 
 const DE = {
-  appName: 'LevelCheck',
+  appName: 'LUFSly',
   tagline: 'Miss LUFS, True Peak und Dynamikumfang deiner Audiodateien — direkt im Browser.',
   privacyNote: 'Deine Dateien verlassen dein Gerät nicht. Kein Upload, kein Konto, kein Tracking.',
 
@@ -215,18 +215,18 @@ const DE = {
   howStep2: 'Alles wird lokal im Browser dekodiert und gemessen — es wird nichts hochgeladen.',
   howStep3: 'Stelle oben dein Ziel ein. Podcast sind −16 LUFS, Streaming −14 LUFS, EBU-R128-Broadcast −23 LUFS.',
   howStep4: 'Öffne eine Datei aus der Liste, um den vollständigen Bericht zu sehen, und kopiere ihn oder speichere ihn als PNG oder PDF.',
-  standardsNote: 'Die Messung folgt ITU-R BS.1770-4 / EBU R128 — K-Weighting, zweistufiges Gating und ein 4× oversampeltes True-Peak-Meter, dieselbe Engine wie in der LevelCheck-Chrome-Erweiterung.',
+  standardsNote: 'Die Messung folgt ITU-R BS.1770-4 / EBU R128 — K-Weighting, zweistufiges Gating und ein 4× oversampeltes True-Peak-Meter, dieselbe Engine wie in der LUFSly-Chrome-Erweiterung.',
 
   footerSource: 'Quellcode',
   footerPrivacy: 'Datenschutz',
   footerImprint: 'Impressum',
   backToApp: '← Zurück zur App',
-  backToLevelCheck: '← Zurück zu LevelCheck',
+  backToLUFSly: '← Zurück zu LUFSly',
   imprintTitle: 'Impressum',
   privacyTitle: 'Datenschutzerklärung',
-  imprintPageTitle: 'Impressum – LevelCheck',
-  privacyPageTitle: 'Datenschutz – LevelCheck',
-  indexPageTitle: 'LevelCheck – LUFS-, True-Peak- & Dynamik-Analyse',
+  imprintPageTitle: 'Impressum – LUFSly',
+  privacyPageTitle: 'Datenschutz – LUFSly',
+  indexPageTitle: 'LUFSly – LUFS-, True-Peak- & Dynamik-Analyse',
 };
 
 // ---------------------------------------------------------------------------

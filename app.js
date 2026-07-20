@@ -1,10 +1,10 @@
-// LevelCheck Web — app shell: targets, local settings, file queue.
+// LUFSly Web — app shell: targets, local settings, file queue.
 
 import { msg, initLang, onLangChange } from './i18n.js';
 import { analyzeFile, initReport } from './report.js';
 
 const $ = (id) => document.getElementById(id);
-const SETTINGS_KEY = 'levelcheck-settings';
+const SETTINGS_KEY = 'lufsly-settings';
 
 // ---------- presets ----------
 

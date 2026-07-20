@@ -1,4 +1,4 @@
-/* Palette carried over from the LevelCheck extension side panel. The canvas
+/* Palette carried over from the LUFSly extension side panel. The canvas
    chart and the PNG/PDF export read these variables by name via
    getComputedStyle — renaming one silently breaks the exports. */
 :root {

@@ -1,5 +1,5 @@
 // Offline file analysis and report rendering with PNG/PDF/copy export.
-// Ported from the LevelCheck extension side panel: the DSP, chart drawing and
+// Ported from the LUFSly extension side panel: the DSP, chart drawing and
 // PDF writer are unchanged, only the chrome.* APIs and the single-file
 // assumption were removed.
 
@@ -269,7 +269,7 @@ export function initReport({ fmt, drBand, peakClass, loudnessVerdict, getPreset,
     drawChartOnScreen(history, model.preset.target);
 
     lastReportText = [
-      `LevelCheck – ${msg('reportTitle')}: ${fileName}`,
+      `LUFSly – ${msg('reportTitle')}: ${fileName}`,
       ...model.rows.map(([k, v]) => `${k}: ${v}`),
       `${msg('presetLabel')}: ${model.targetLabel}`,
     ].join('\n');
@@ -450,7 +450,7 @@ export function initReport({ fmt, drBand, peakClass, loudnessVerdict, getPreset,
     ctx.fillStyle = col('--ink');
     ctx.font = '600 19px system-ui, sans-serif';
     ctx.textAlign = 'left';
-    ctx.fillText('LevelCheck – ' + msg('reportTitle'), P, y + 6);
+    ctx.fillText('LUFSly – ' + msg('reportTitle'), P, y + 6);
     y += 26;
     ctx.fillStyle = col('--muted');
     ctx.font = '12px system-ui, sans-serif';
@@ -510,7 +510,7 @@ export function initReport({ fmt, drBand, peakClass, loudnessVerdict, getPreset,
 
   function baseName() {
     const n = current?.model.fileName || 'report';
-    return 'LevelCheck_' + n.replace(/\.[^.]+$/, '').replace(/[^\w-]+/g, '_');
+    return 'LUFSly_' + n.replace(/\.[^.]+$/, '').replace(/[^\w-]+/g, '_');
   }
 
   function download(blob, filename) {

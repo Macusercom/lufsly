@@ -1,9 +1,9 @@
-<img src="icons/icon128.png" alt="LevelCheck icon" height="100">
+<img src="icons/icon128.png" alt="LUFSly icon" height="100">
 
-# LevelCheck
+# LUFSly
 A privacy-first web app that measures the loudness (LUFS), True Peak and dynamic range of your audio files. Drop in a file — or a whole batch — and get a full EBU R128 report with a loudness graph you can copy, or save as PNG or PDF. Everything runs locally in your browser: no upload, no account, no tracking.
 
-🌐 **[Try it live → macusercom.github.io/levelcheck](https://macusercom.github.io/levelcheck/)**
+🌐 **[Try it live → macusercom.github.io/lufsly](https://macusercom.github.io/lufsly/)**
 
 
 ## Features
@@ -23,11 +23,11 @@ A privacy-first web app that measures the loudness (LUFS), True Peak and dynamic
 - German and English UI, follows your browser language
 - No audio or data ever leaves your machine
 
-Measurement follows ITU-R BS.1770-4 / EBU R128 (K-weighting, two-stage gating) using the same DSP core as the LevelCheck Chrome extension, so results match between the two.
+Measurement follows ITU-R BS.1770-4 / EBU R128 (K-weighting, two-stage gating) using the same DSP core as the LUFSly Chrome extension, so results match between the two.
 
 
 ## How To Use
-1. Open **[macusercom.github.io/levelcheck](https://macusercom.github.io/levelcheck/)** in your browser
+1. Open **[macusercom.github.io/lufsly](https://macusercom.github.io/lufsly/)** in your browser
 2. Drop one or more audio files onto the page, or click the box to choose them
 3. Pick your target — Podcast, Streaming, Broadcast, or a custom value
 4. Read the verdicts, then click any file in the list to open its full report
@@ -41,8 +41,8 @@ No install required. Works on mobile and desktop. Supported formats are whatever
 The app uses ES modules, so opening `index.html` directly as `file://` will not work — it needs a local server.
 
 ```
-git clone https://github.com/Macusercom/levelcheck.git
-cd levelcheck
+git clone https://github.com/Macusercom/lufsly.git
+cd lufsly
 python3 -m http.server
 ```
 
