@@ -46,22 +46,21 @@
       <p class="card-hint" data-i18n="targetsHint">Your targets are saved in this browser and applied to every analysis.</p>
 
       <div class="field-grid">
-        <div class="field">
+        <div class="field" id="target-field">
           <label for="preset" data-i18n="presetLabel">Target</label>
-          <select id="preset">
-            <option value="podcast" data-i18n="presetPodcast">Podcast (−16 LUFS)</option>
-            <option value="streaming" data-i18n="presetStreaming">Streaming (−14 LUFS)</option>
-            <option value="broadcast" data-i18n="presetBroadcast">Broadcast EBU R128 (−23 LUFS)</option>
-            <option value="custom" data-i18n="presetCustom">Custom</option>
-            <option value="none" data-i18n="presetNone">None</option>
-          </select>
-        </div>
-
-        <div class="field narrow" id="custom-target-field" hidden>
-          <label for="custom-target" data-i18n="customTarget">Loudness target</label>
-          <div class="with-unit">
-            <input type="number" id="custom-target" step="0.5" min="-40" max="0" value="-16" />
-            <span class="unit">LUFS</span>
+          <div class="control-row">
+            <select id="preset">
+              <option value="podcast" data-i18n="presetPodcast">Podcast (−16 LUFS)</option>
+              <option value="streaming" data-i18n="presetStreaming">Streaming (−14 LUFS)</option>
+              <option value="broadcast" data-i18n="presetBroadcast">Broadcast EBU R128 (−23 LUFS)</option>
+              <option value="custom" data-i18n="presetCustom">Custom</option>
+              <option value="none" data-i18n="presetNone">None</option>
+            </select>
+            <div class="with-unit inline-extra" id="custom-target-field" hidden>
+              <input type="number" id="custom-target" step="0.5" min="-40" max="0" value="-16"
+                     data-i18n-aria="customTarget" />
+              <span class="unit">LUFS</span>
+            </div>
           </div>
         </div>
 
@@ -81,19 +80,18 @@
           </div>
         </div>
 
-        <div class="field">
+        <div class="field" id="dr-field">
           <label for="dr-mode" data-i18n="drTargetLabel">Dynamic range target</label>
-          <select id="dr-mode">
-            <option value="auto" data-i18n="drTargetAuto">Automatic (from target)</option>
-            <option value="custom" data-i18n="drTargetCustom">Custom</option>
-          </select>
-        </div>
-
-        <div class="field narrow" id="dr-custom-field" hidden>
-          <label for="dr-target" data-i18n="drCustomValue">Target LRA</label>
-          <div class="with-unit">
-            <input type="number" id="dr-target" step="0.5" min="0.5" max="30" value="4" />
-            <span class="unit">LU</span>
+          <div class="control-row">
+            <select id="dr-mode">
+              <option value="auto" data-i18n="drTargetAuto">Automatic (from target)</option>
+              <option value="custom" data-i18n="drTargetCustom">Custom</option>
+            </select>
+            <div class="with-unit inline-extra" id="dr-custom-field" hidden>
+              <input type="number" id="dr-target" step="0.5" min="0.5" max="30" value="4"
+                     data-i18n-aria="drCustomValue" />
+              <span class="unit">LU</span>
+            </div>
           </div>
         </div>
       </div>

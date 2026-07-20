@@ -117,8 +117,13 @@ function applySettingsToUi() {
   $('tp-limit').value = settings.tpLimit;
   $('dr-mode').value = settings.drMode;
   $('dr-target').value = settings.drTarget;
-  $('custom-target-field').hidden = settings.preset !== 'custom';
-  $('dr-custom-field').hidden = settings.drMode !== 'custom';
+  // Each inline value input widens its own field rather than becoming one.
+  const showTarget = settings.preset === 'custom';
+  const showDr = settings.drMode === 'custom';
+  $('custom-target-field').hidden = !showTarget;
+  $('dr-custom-field').hidden = !showDr;
+  $('target-field').classList.toggle('wide', showTarget);
+  $('dr-field').classList.toggle('wide', showDr);
 }
 
 // Everything that depends on the targets, re-scored from stored stats.

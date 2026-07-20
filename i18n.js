@@ -397,6 +397,12 @@ export function applyLang(next) {
   for (const el of document.querySelectorAll('[data-i18n-placeholder]')) {
     el.placeholder = msg(el.dataset.i18nPlaceholder);
   }
+  // Inline inputs sit under their select's label, so they carry their own name.
+  for (const el of document.querySelectorAll('[data-i18n-aria]')) {
+    const text = msg(el.dataset.i18nAria);
+    el.setAttribute('aria-label', text);
+    el.title = text;
+  }
   // Info icons: native tooltip via title, plus a11y labelling.
   for (const el of document.querySelectorAll('[data-info]')) {
     const text = msg(el.dataset.info);
