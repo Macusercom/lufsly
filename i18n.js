@@ -52,8 +52,8 @@ const EN = {
   queueEmpty: 'No files analyzed yet.',
 
   // ---- metrics ----
-  momentary: 'Momentary',
-  shortTerm: 'Short-term',
+  momentaryMax: 'Momentary (max)',
+  shortTermMax: 'Short-term (max)',
   integrated: 'Integrated',
   truePeak: 'True Peak',
   truePeakMax: 'True Peak (max)',
@@ -67,8 +67,8 @@ const EN = {
   infoTruePeak: 'Highest signal peak including inter-sample peaks (4× oversampled), in dBTP. Above −1 dBTP it risks clipping.',
   infoLra: 'Loudness Range: how much the loudness varies between the quiet and loud parts.',
   infoPlr: 'Peak minus integrated loudness – shows how much dynamic headroom is left / how compressed the audio is.',
-  infoMomentary: 'Loudness over the last 400 ms – reacts quickly to what you hear right now.',
-  infoShortTerm: 'Loudness averaged over 3 seconds.',
+  infoMomentaryMax: 'The loudest 400 ms anywhere in the file. Reveals brief loudness spikes that the integrated value averages away.',
+  infoShortTermMax: 'The loudest 3-second stretch anywhere in the file – a good check for passages that jump well above your target.',
 
   // ---- verdicts ----
   tooQuiet: 'Too quiet ($DIFF$ LU below target)',
@@ -163,8 +163,8 @@ const DE = {
   removeFile: 'Entfernen',
   queueEmpty: 'Noch keine Dateien analysiert.',
 
-  momentary: 'Momentary',
-  shortTerm: 'Short-Term',
+  momentaryMax: 'Momentary (max)',
+  shortTermMax: 'Short-Term (max)',
   integrated: 'Integrated',
   truePeak: 'True Peak',
   truePeakMax: 'True Peak (max)',
@@ -178,8 +178,8 @@ const DE = {
   infoTruePeak: 'Höchster Signalpegel inkl. Zwischenabtastwerten (4× oversampled), in dBTP. Über −1 dBTP droht Clipping.',
   infoLra: 'Loudness Range: wie stark die Lautheit zwischen leisen und lauten Stellen schwankt.',
   infoPlr: 'Peak minus integrierte Lautheit – zeigt, wie viel Dynamik-Reserve bleibt bzw. wie stark komprimiert wurde.',
-  infoMomentary: 'Lautheit der letzten 400 ms – reagiert schnell auf das, was du gerade hörst.',
-  infoShortTerm: 'Über 3 Sekunden gemittelte Lautheit.',
+  infoMomentaryMax: 'Die lautesten 400 ms der gesamten Datei. Zeigt kurze Lautheitsspitzen, die im integrierten Wert untergehen.',
+  infoShortTermMax: 'Die lautesten 3 Sekunden der gesamten Datei – gut geeignet, um Passagen zu finden, die deutlich über dem Ziel liegen.',
 
   tooQuiet: 'Zu leise ($DIFF$ LU unter dem Ziel)',
   justRight: 'Genau richtig für das Ziel',

@@ -3,7 +3,7 @@
 // PDF writer are unchanged, only the chrome.* APIs and the single-file
 // assumption were removed.
 
-import { LoudnessAnalyzer } from './dsp/loudness-core.js';
+import { LoudnessAnalyzer, powerToLufs } from './dsp/loudness-core.js';
 import { msg } from './i18n.js';
 
 const HOP_SEC = 0.1;          // one short-term history point per 100 ms
@@ -109,11 +109,34 @@ export async function analyzeFile(file, onProgress) {
     await new Promise((r) => setTimeout(r));
   }
 
+  // The analyzer's momentary/short-term fields are live-meter values: each one
+  // is overwritten every 100 ms, so at the end of a file they describe only its
+  // last 400 ms / 3 s. For a finished file the maxima are the useful figures —
+  // they reveal overshoots the integrated value averages away. Both are derived
+  // from data the analyzer already keeps, so the DSP core stays untouched.
+  const stats = analyzer.getStats();
+  stats.momentaryMax = maxPowerToLufs(analyzer.blockPowers);
+  stats.shortTermMax = maxValue(analyzer.shortTermLoudness);
+
   return {
     bufferInfo: { sampleRate: buffer.sampleRate, numberOfChannels: buffer.numberOfChannels },
-    stats: analyzer.getStats(),
+    stats,
     history: analyzer.shortTermHistory,
   };
+}
+
+// Looped rather than Math.max(...arr): a long file yields tens of thousands of
+// entries, which is enough to overflow the argument list.
+function maxValue(values) {
+  let max = -Infinity;
+  for (const v of values) if (v > max) max = v;
+  return max;
+}
+
+function maxPowerToLufs(powers) {
+  let max = 0;
+  for (const p of powers) if (p > max) max = p;
+  return max > 0 ? powerToLufs(max) : -Infinity;
 }
 
 export function initReport({ fmt, drBand, peakClass, loudnessVerdict, getPreset, getTargetLabel }) {
@@ -170,8 +193,8 @@ export function initReport({ fmt, drBand, peakClass, loudnessVerdict, getPreset,
       [msg('truePeakMax'), fmt(s.maxTruePeak, ' dBTP'), peakClass(s.maxTruePeak, preset), 'infoTruePeak'],
       [msg('lra'), s.lra != null ? fmt(s.lra, ' LU') : '–', s.lra != null ? drBand(s.lra, preset).cls : '', 'infoLra'],
       [msg('plr'), s.plr != null ? fmt(s.plr, ' dB') : '–', '', 'infoPlr'],
-      [msg('momentary'), fmt(s.momentary, ' LUFS'), '', 'infoMomentary'],
-      [msg('shortTerm'), fmt(s.shortTerm, ' LUFS'), '', 'infoShortTerm'],
+      [msg('momentaryMax'), fmt(s.momentaryMax, ' LUFS'), '', 'infoMomentaryMax'],
+      [msg('shortTermMax'), fmt(s.shortTermMax, ' LUFS'), '', 'infoShortTermMax'],
       [msg('duration'), formatTime(s.durationSec), '', null],
       [msg('sampleRate'), bufferInfo.sampleRate + ' Hz', '', null],
       [msg('channels'), String(bufferInfo.numberOfChannels), '', null],
@@ -218,9 +241,11 @@ export function initReport({ fmt, drBand, peakClass, loudnessVerdict, getPreset,
     const table = $('report-table');
     table.textContent = '';
     for (const [k, v, cls, info] of model.rows) {
-      const tr = document.createElement('tr');
-      const td1 = document.createElement('td');
-      td1.textContent = k;
+      const row = document.createElement('div');
+      row.className = 'metric';
+      const label = document.createElement('span');
+      label.className = 'metric-label';
+      label.textContent = k;
       if (info) {
         const ic = document.createElement('span');
         ic.className = 'info';
@@ -229,15 +254,18 @@ export function initReport({ fmt, drBand, peakClass, loudnessVerdict, getPreset,
         ic.setAttribute('aria-label', t);
         ic.setAttribute('tabindex', '0');
         ic.setAttribute('role', 'img');
-        td1.append(' ', ic);
+        label.append(' ', ic);
       }
-      const td2 = document.createElement('td');
-      td2.textContent = v;
-      if (cls) td2.className = 'val-' + cls;
-      tr.append(td1, td2);
-      table.append(tr);
+      const value = document.createElement('span');
+      value.className = 'metric-value' + (cls ? ' val-' + cls : '');
+      value.textContent = v;
+      row.append(label, value);
+      table.append(row);
     }
 
+    // Unhide before drawing: a hidden section has clientWidth 0, which would
+    // size the canvas from the fallback and stretch it to the wrong aspect.
+    $('report').hidden = false;
     drawChartOnScreen(history, model.preset.target);
 
     lastReportText = [
@@ -246,7 +274,6 @@ export function initReport({ fmt, drBand, peakClass, loudnessVerdict, getPreset,
       `${msg('presetLabel')}: ${model.targetLabel}`,
     ].join('\n');
 
-    $('report').hidden = false;
     if (scroll) $('report').scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 

@@ -57,7 +57,7 @@
           </select>
         </div>
 
-        <div class="field" id="custom-target-field" hidden>
+        <div class="field narrow" id="custom-target-field" hidden>
           <label for="custom-target" data-i18n="customTarget">Loudness target</label>
           <div class="with-unit">
             <input type="number" id="custom-target" step="0.5" min="-40" max="0" value="-16" />
@@ -65,7 +65,7 @@
           </div>
         </div>
 
-        <div class="field">
+        <div class="field narrow">
           <label for="tolerance" data-i18n="toleranceLabel">Tolerance</label>
           <div class="with-unit">
             <input type="number" id="tolerance" step="0.1" min="0" max="10" value="1" />
@@ -73,7 +73,7 @@
           </div>
         </div>
 
-        <div class="field">
+        <div class="field narrow">
           <label for="tp-limit" data-i18n="tpLimitLabel">True Peak limit</label>
           <div class="with-unit">
             <input type="number" id="tp-limit" step="0.1" min="-10" max="0" value="-1" />
@@ -89,7 +89,7 @@
           </select>
         </div>
 
-        <div class="field" id="dr-custom-field" hidden>
+        <div class="field narrow" id="dr-custom-field" hidden>
           <label for="dr-target" data-i18n="drCustomValue">Target LRA</label>
           <div class="with-unit">
             <input type="number" id="dr-target" step="0.5" min="0.5" max="30" value="4" />
@@ -129,7 +129,7 @@
       <div class="dr-bar" id="dr-bar"></div>
       <div class="dr-scale" id="dr-scale"></div>
 
-      <table><tbody id="report-table"></tbody></table>
+      <div id="report-table"></div>
 
       <h3 data-i18n="loudnessHistory">Short-term loudness over time</h3>
       <div class="chart-wrap">
@@ -157,7 +157,6 @@
   </main>
 
   <footer>
-    <p data-i18n="privacyNote">Your files never leave your device. No upload, no account, no tracking.</p>
     <p class="footer-links">
       <a href="https://github.com/Macusercom/levelcheck" target="_blank" rel="noopener" data-i18n="footerSource">Source code</a>
       ·
