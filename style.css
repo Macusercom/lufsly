@@ -175,11 +175,10 @@ main {
 
 /* ---------- targets ---------- */
 
-/* Two fixed columns, so the set is two rows at any width rather than
-   reflowing between one and four. The selects need room for their labels and
-   share the left column; the numeric limits hold two or three digits and sit
-   together in the narrower right one. */
-.field-grid { display: grid; grid-template-columns: minmax(0, 1fr) 220px; gap: 16px 20px; }
+/* Two equal columns, so the set is two rows at any width rather than
+   reflowing between one and four. The selects share the left column, the
+   numeric limits the right, so like controls line up down the page. */
+.field-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px 20px; }
 .field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 .field label { color: var(--ink-2); font-size: 13px; display: flex; align-items: center; }
 .field select, .field input[type="number"] { width: 100%; }
