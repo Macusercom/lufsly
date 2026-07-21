@@ -4,7 +4,7 @@
 // assumption were removed.
 
 import { LoudnessAnalyzer, powerToLufs, lufsToPower, ABS_GATE_LUFS } from './dsp/loudness-core.js';
-import { msg } from './i18n.js';
+import { msg, getLang } from './i18n.js';
 
 const HOP_SEC = 0.1;          // one short-term history point per 100 ms
 const SHORTTERM_OFFSET = 30;  // short-term values only begin after 3 s
@@ -124,25 +124,55 @@ function sniffSampleRate(data) {
   return null;
 }
 
-// What the file actually is, read from the container rather than trusted from
-// the extension or the browser's MIME guess. Walks the same headers as
-// sniffSampleRate. Both fields are null when they cannot be established —
-// the report shows a dash rather than inventing a value.
+// What the file actually is, plus whatever it says about itself: read from the
+// container rather than trusted from the extension or the browser's MIME guess.
+// Walks the same headers as sniffSampleRate. Returns { codec, meta } where meta
+// holds only the fields the file actually carries — missing ones stay absent so
+// the caller can hide them rather than print blanks.
 //
 // Must run before decoding: decodeAudioData detaches the ArrayBuffer.
 function sniffFormat(data) {
   const b = new Uint8Array(data);
   const dv = new DataView(data);
-  if (b.length < 16) return { codec: null, encoder: null };
+  const meta = {};
+  if (b.length < 16) return { codec: null, meta };
 
   const tag = (o, s) => String.fromCharCode(...b.subarray(o, o + s.length)) === s;
   // Trailing NULs and padding are common in these string fields.
-  const ascii = (o, n) => String.fromCharCode(...b.subarray(o, o + n))
-    .replace(/\0[\s\S]*$/, '').trim();
+  const clean = (s) => s.replace(/\0[\s\S]*$/, '').trim();
+  const ascii = (o, n) => clean(String.fromCharCode(...b.subarray(o, Math.min(b.length, o + n))));
+  const utf8 = (o, n) => clean(new TextDecoder('utf-8')
+    .decode(b.subarray(o, Math.min(b.length, o + n))));
   const find = (needle, from, to) => {
     const end = Math.min(b.length - needle.length, to);
-    for (let i = from; i <= end; i++) if (tag(i, needle)) return i;
+    for (let i = Math.max(0, from); i <= end; i++) if (tag(i, needle)) return i;
     return -1;
+  };
+  const set = (key, value) => { if (value) meta[key] = value; };
+
+  // KEY=value pairs shared by FLAC, Vorbis and Opus.
+  const VORBIS_KEYS = {
+    TITLE: 'title', ARTIST: 'artist', ALBUM: 'album', DATE: 'date',
+    GENRE: 'genre', ENCODER: 'encoder', DESCRIPTION: 'comment', COMMENT: 'comment',
+  };
+  const readVorbisComments = (o) => {
+    // vendor string, then a count, then that many length-prefixed "KEY=value".
+    const vlen = dv.getUint32(o, true);
+    set('encoder', utf8(o + 4, vlen));
+    let p = o + 4 + vlen;
+    if (p + 4 > b.length) return;
+    const count = dv.getUint32(p, true);
+    p += 4;
+    for (let i = 0; i < count && p + 4 <= b.length; i++) {
+      const len = dv.getUint32(p, true);
+      const eq = utf8(p + 4, len);
+      const split = eq.indexOf('=');
+      if (split > 0) {
+        const key = VORBIS_KEYS[eq.slice(0, split).toUpperCase()];
+        if (key) set(key, eq.slice(split + 1));
+      }
+      p += 4 + len;
+    }
   };
 
   // ---- WAV / RIFF ----
@@ -150,7 +180,11 @@ function sniffFormat(data) {
     const WAVE_FORMATS = {
       1: 'PCM', 3: 'IEEE float', 6: 'A-law', 7: 'µ-law', 0x11: 'IMA ADPCM', 0x55: 'MP3',
     };
-    let codec = 'WAV', encoder = null;
+    const INFO_KEYS = {
+      INAM: 'title', IART: 'artist', IPRD: 'album', ICRD: 'date',
+      ISFT: 'encoder', IGNR: 'genre', ICMT: 'comment',
+    };
+    let codec = 'WAV';
     let o = 12;
     while (o + 8 <= b.length) {
       const size = dv.getUint32(o + 4, true);
@@ -162,93 +196,110 @@ function sniffFormat(data) {
         const name = WAVE_FORMATS[fmt] ?? `format ${fmt}`;
         codec = `WAV (${name}${bits ? ` ${bits}-bit` : ''})`;
       } else if (tag(o, 'LIST') && tag(o + 8, 'INFO')) {
-        // ISFT is the "software" field, where encoders record themselves.
-        const isft = find('ISFT', o + 12, o + 8 + size);
-        if (isft > 0) encoder = ascii(isft + 8, dv.getUint32(isft + 4, true)) || null;
+        let p = o + 12;
+        const end = Math.min(b.length, o + 8 + size);
+        while (p + 8 <= end) {
+          const len = dv.getUint32(p + 4, true);
+          const key = INFO_KEYS[ascii(p, 4)];
+          if (key) set(key, ascii(p + 8, len));
+          p += 8 + len + (len & 1);
+        }
       }
       o += 8 + size + (size & 1);
     }
-    return { codec, encoder };
+    return { codec, meta };
   }
 
   // ---- FLAC ----
   if (tag(0, 'fLaC') && b.length > 30) {
     const bits = ((((b[20] & 1) << 4) | (b[21] >> 4)) + 1);
-    let encoder = null;
     // Metadata blocks: 1 byte (last-flag + type) then a 24-bit length.
     let o = 4;
     while (o + 4 <= b.length) {
       const last = b[o] & 0x80, type = b[o] & 0x7f;
       const len = (b[o + 1] << 16) | (b[o + 2] << 8) | b[o + 3];
-      if (type === 4 && o + 8 <= b.length) {          // VORBIS_COMMENT
-        const vlen = dv.getUint32(o + 4, true);
-        encoder = ascii(o + 8, vlen) || null;
-      }
+      if (type === 4) readVorbisComments(o + 4);   // VORBIS_COMMENT
       if (last) break;
       o += 4 + len;
     }
-    return { codec: `FLAC (${bits}-bit)`, encoder };
+    return { codec: `FLAC (${bits}-bit)`, meta };
   }
 
   // ---- Ogg: Opus or Vorbis ----
   if (tag(0, 'OggS')) {
-    const limit = Math.min(b.length, 65536);
-    const opus = find('OpusHead', 0, limit);
-    if (opus >= 0) {
+    const limit = Math.min(b.length, 262144);
+    if (find('OpusHead', 0, limit) >= 0) {
       const tags = find('OpusTags', 0, limit);
-      const vendor = tags >= 0 ? ascii(tags + 12, dv.getUint32(tags + 8, true)) : '';
-      return { codec: 'Opus', encoder: vendor || null };
+      if (tags >= 0) readVorbisComments(tags + 8);
+      return { codec: 'Opus', meta };
     }
-    const vorbis = find('vorbis', 0, limit);
-    if (vorbis >= 0) {
-      // Comment header is packet type 3 followed by "vorbis", then the vendor.
-      let encoder = null;
+    if (find('vorbis', 0, limit) >= 0) {
+      // Comment header is packet type 3 followed by "vorbis".
       for (let i = 0; i < limit - 7; i++) {
-        if (b[i] === 0x03 && tag(i + 1, 'vorbis')) {
-          encoder = ascii(i + 11, dv.getUint32(i + 7, true)) || null;
-          break;
-        }
+        if (b[i] === 0x03 && tag(i + 1, 'vorbis')) { readVorbisComments(i + 7); break; }
       }
-      return { codec: 'Vorbis', encoder };
+      return { codec: 'Vorbis', meta };
     }
-    return { codec: 'Ogg', encoder: null };
+    return { codec: 'Ogg', meta };
   }
 
   // ---- MP4 / M4A: brand only, no box walking ----
   if (tag(4, 'ftyp')) {
     const brand = ascii(8, 4);
     const codec = /M4A|mp4|iso|M4B/i.test(brand) ? 'AAC (M4A)' : `MP4 (${brand})`;
-    return { codec, encoder: null };
+    return { codec, meta };
   }
 
   // ---- MP3 ----
-  // Two encoder claims can coexist: the LAME tag names the codec that actually
-  // encoded the audio, while ID3's TSSE is whatever muxed the file (ffmpeg
-  // writes "Lavf…" there). For a row labelled "Encoder" the codec wins, with
-  // TSSE as the fallback for files LAME never touched.
-  let o = 0, tsseEncoder = null;
+  let o = 0;
+  let tsse = null;
   if (tag(0, 'ID3')) {
+    const major = b[3];
     const size = (b[6] << 21) | (b[7] << 14) | (b[8] << 7) | b[9];
-    for (const frame of ['TSSE', 'TENC']) {
-      const at = find(frame, 10, 10 + size);
-      if (at > 0) {
-        const len = dv.getUint32(at + 4, false);
-        // First byte of a text frame is the encoding marker.
-        tsseEncoder = ascii(at + 11, Math.max(0, len - 1)) || null;
-        if (tsseEncoder) break;
+    const end = Math.min(b.length, 10 + size);
+    const ID3_KEYS = {
+      TIT2: 'title', TPE1: 'artist', TALB: 'album', TCON: 'genre',
+      TDRC: 'date', TYER: 'date', TDAT: 'date',
+    };
+    // A text frame's first byte selects the encoding of the rest.
+    const frameText = (at, len) => {
+      const enc = b[at];
+      const body = b.subarray(at + 1, at + len);
+      try {
+        if (enc === 1) return clean(new TextDecoder('utf-16').decode(body));
+        if (enc === 2) return clean(new TextDecoder('utf-16be').decode(body));
+        if (enc === 3) return clean(new TextDecoder('utf-8').decode(body));
+        return clean(new TextDecoder('windows-1252').decode(body));
+      } catch {
+        return '';
       }
+    };
+    let p = 10;
+    while (p + 10 <= end) {
+      const id = ascii(p, 4);
+      if (!/^[A-Z0-9]{4}$/.test(id)) break;   // padding or a frame we cannot trust
+      // v2.4 sizes are syncsafe (7 bits per byte); v2.3 and earlier are plain.
+      const raw = dv.getUint32(p + 4, false);
+      const len = major >= 4
+        ? ((raw >> 24 & 0x7f) << 21) | ((raw >> 16 & 0x7f) << 14) | ((raw >> 8 & 0x7f) << 7) | (raw & 0x7f)
+        : raw;
+      if (len <= 0 || p + 10 + len > end) break;
+      if (id === 'TSSE') tsse = frameText(p + 10, len);
+      else if (ID3_KEYS[id] && !meta[ID3_KEYS[id]]) set(ID3_KEYS[id], frameText(p + 10, len));
+      p += 10 + len;
     }
     o = 10 + size;
   }
-  let encoder = null;
-  // LAME stamps its version into the Xing/Info header of the first frame; the
-  // exact offset varies with version and channel mode, so match the string.
+  // Two encoder claims can coexist: the LAME tag names the codec that actually
+  // encoded the audio, while ID3's TSSE is whatever muxed the file (ffmpeg
+  // writes "Lavf…" there). The codec wins, with TSSE as the fallback.
   const lame = find('LAME', o, o + 8192);
   if (lame > 0) {
     const s = ascii(lame, 9);
-    if (/^LAME\d/.test(s)) encoder = s.replace(/^LAME/, 'LAME ');
+    if (/^LAME\d/.test(s)) set('encoder', s.replace(/^LAME/, 'LAME '));
   }
-  encoder ??= tsseEncoder;
+  if (!meta.encoder) set('encoder', tsse);
+
   const LAYERS = { 1: 'Layer III', 2: 'Layer II', 3: 'Layer I' };
   const VERSIONS = { 3: 'MPEG-1', 2: 'MPEG-2', 0: 'MPEG-2.5' };
   const BITRATES_V1_L3 = [0, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320];
@@ -263,9 +314,9 @@ function sniffFormat(data) {
     const kbps = layer === 1 && brIdx > 0 && brIdx < 15 ? table[brIdx] : 0;
     const detail = [VERSIONS[version], LAYERS[layer], kbps ? `${kbps} kbps` : null]
       .filter(Boolean).join(', ');
-    return { codec: `MP3 (${detail})`, encoder };
+    return { codec: `MP3 (${detail})`, meta };
   }
-  return { codec: null, encoder };
+  return { codec: null, meta };
 }
 
 // Decode and measure one file. Progress is reported through the callback so
@@ -322,8 +373,10 @@ export async function analyzeFile(file, onProgress) {
       sampleRate: buffer.sampleRate,
       numberOfChannels: buffer.numberOfChannels,
       codec: format.codec,
-      encoder: format.encoder,
     },
+    // What the file says about itself, plus the one fact only the File object
+    // knows. Shown in the collapsed metadata panel, not the metrics table.
+    meta: { ...format.meta, fileDate: file.lastModified || null },
     stats,
     history: analyzer.shortTermHistory,
     peaks: analyzer.truePeakHistory,
@@ -407,7 +460,6 @@ export function initReport({ fmt, drBand, peakClass, loudnessVerdict, getPreset,
       [msg('sampleRate'), bufferInfo.sampleRate + ' Hz', '', null],
       [msg('channels'), String(bufferInfo.numberOfChannels), '', null],
       [msg('codec'), bufferInfo.codec || '–', '', 'infoCodec'],
-      [msg('encoder'), bufferInfo.encoder || '–', '', 'infoEncoder'],
     ];
     return { fileName, preset, targetLabel: getTargetLabel(), verdicts, rows };
   }
@@ -442,6 +494,41 @@ export function initReport({ fmt, drBand, peakClass, loudnessVerdict, getPreset,
       durationSec, unit: 'LU',
       bandOf: (v) => clsColor(drBand(v, preset).cls),
     };
+  }
+
+  // The collapsed panel under the table. Only fields the file actually carries
+  // are listed, so an untagged file shows just its date rather than a column of
+  // dashes. The panel hides entirely if even that is unavailable.
+  const META_FIELDS = [
+    ['title', 'metaTitleField'], ['artist', 'metaArtist'], ['album', 'metaAlbum'],
+    ['date', 'metaDate'], ['genre', 'metaGenre'], ['comment', 'metaComment'],
+    ['encoder', 'encoder'], ['fileDate', 'metaFileDate'],
+  ];
+
+  // Returns the [label, value] pairs it rendered, so the copied text can reuse
+  // them rather than scraping them back out of the DOM.
+  function buildMetaPanel(meta = {}) {
+    const box = $('meta-list');
+    box.textContent = '';
+    const pairs = [];
+    for (const [key, labelKey] of META_FIELDS) {
+      const raw = meta[key];
+      if (!raw) continue;
+      const value = key === 'fileDate' ? new Date(raw).toLocaleString(getLang()) : String(raw);
+      pairs.push([msg(labelKey), value]);
+      const row = document.createElement('div');
+      row.className = 'metric';
+      const label = document.createElement('span');
+      label.className = 'metric-label';
+      label.textContent = msg(labelKey);
+      const val = document.createElement('span');
+      val.className = 'metric-value';
+      val.textContent = value;
+      row.append(label, val);
+      box.append(row);
+    }
+    $('meta-details').hidden = pairs.length === 0;
+    return pairs;
   }
 
   function render(entry, scroll) {
@@ -490,6 +577,8 @@ export function initReport({ fmt, drBand, peakClass, loudnessVerdict, getPreset,
       table.append(row);
     }
 
+    const metaPairs = buildMetaPanel(entry.meta);
+
     // Unhide before drawing: a hidden section has clientWidth 0, which would
     // size the canvas from the fallback and stretch it to the wrong aspect.
     $('report').hidden = false;
@@ -516,6 +605,9 @@ export function initReport({ fmt, drBand, peakClass, loudnessVerdict, getPreset,
       `LUFSly – ${msg('reportTitle')}: ${fileName}`,
       ...model.rows.map(([k, v]) => `${k}: ${v}`),
       `${msg('presetLabel')}: ${model.targetLabel}`,
+      // Plain text has no room cost, so the metadata rides along even though
+      // the on-screen panel starts collapsed.
+      ...metaPairs.map(([k, v]) => `${k}: ${v}`),
     ].join('\n');
 
     if (scroll) $('report').scrollIntoView({ behavior: 'smooth', block: 'start' });

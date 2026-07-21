@@ -321,6 +321,26 @@ main {
 
 .chart-wrap { position: relative; }
 .chart-wrap canvas { width: 100%; display: block; background: var(--page); border-radius: 8px; }
+.meta-details { margin-top: 14px; }
+.meta-details > summary {
+  cursor: pointer; list-style: none;
+  color: var(--ink-2); font-size: 13px;
+  padding: 6px 0; user-select: none;
+}
+.meta-details > summary::-webkit-details-marker { display: none; }
+/* Own marker before the label. Swapping the glyph rather than rotating one:
+   a rotated inline-block sits off its baseline next to the text. */
+.meta-details > summary::before {
+  content: '▸'; display: inline-block; width: 14px; color: var(--muted);
+}
+.meta-details[open] > summary::before { content: '▾'; }
+.meta-details > summary:hover { color: var(--accent); }
+.meta-details #meta-list { margin-top: 4px; }
+.meta-details .metric-value {
+  font-variant-numeric: normal; text-align: right;
+  overflow-wrap: anywhere; padding-left: 16px;
+}
+
 .chart-cursor {
   position: absolute; pointer-events: none;
   width: 1px; background: var(--ink-2); opacity: 0.55;
