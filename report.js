@@ -897,43 +897,58 @@ export function initReport({ fmt, drBand, peakClass, loudnessVerdict, getPreset,
 
     const map = drawChartInto(ctx, { x: 0, y: 0, w: cssW, h: cssH }, series, opts);
 
-    const tip = $(tipId);
-    const cursor = canvas.parentElement.querySelector('.chart-cursor');
     // The cursor is a positioned element rather than a canvas redraw: moving a
     // div costs nothing, whereas repainting the chart on every mousemove would
     // redraw tens of thousands of points.
-    charts.push({ cursor, map });
+    charts.push({ cursor: canvas.parentElement.querySelector('.chart-cursor'), map, series, opts, tip: $(tipId) });
 
-    const { values, t0, hop } = series;
-    const hideCursors = () => {
-      for (const c of charts) if (c.cursor) c.cursor.hidden = true;
-    };
-    const hideAll = () => { tip.hidden = true; hideCursors(); };
     canvas.onmousemove = (e) => {
-      if (values.length < 2) return hideAll();
       const r = canvas.getBoundingClientRect();
       const x = e.clientX - r.left;
-      // Invert the time mapping, then land on this series' nearest sample.
+      // Invert this chart's time mapping; every chart then resolves that same
+      // instant against its own samples.
       const t = ((x - map.padL) / map.plotW) * opts.durationSec;
-      const i = Math.round((t - t0) / hop);
-      if (i < 0 || i >= values.length) return hideAll();
-      const tAt = t0 + i * hop;
-      tip.textContent = `${formatClock(tAt)} · ${values[i].toFixed(1).replace('-', '−')} ${opts.unit}`;
-      tip.style.left = map.xAt(i) + 'px';
-      tip.style.top = map.yAt(values[i]) + 'px';
-      tip.hidden = false;
-      // The charts share a time axis, so mark the same instant on all of them.
-      // Positioned per chart from its own map rather than by copying pixels, so
-      // this still holds if a chart is ever sized differently.
-      for (const c of charts) {
-        if (!c.cursor) continue;
-        c.cursor.style.left = c.map.xAtTime(tAt) + 'px';
+      if (t < 0 || t > opts.durationSec) return hideHover();
+      showHoverAt(t);
+    };
+    canvas.onmouseleave = hideHover;
+  }
+
+  // One hover reads all three charts at the same instant: they share a time
+  // axis, so the point of stacking them is comparing a moment across all of
+  // them. Each chart snaps to its own nearest sample rather than to the hovered
+  // chart's grid — the DR series steps every 0.5 s, the others every 0.1 s.
+  function showHoverAt(t) {
+    for (const c of charts) {
+      if (c.cursor) {
+        c.cursor.style.left = c.map.xAtTime(t) + 'px';
         c.cursor.style.top = c.map.padT + 'px';
         c.cursor.style.height = c.map.plotH + 'px';
         c.cursor.hidden = false;
       }
-    };
-    canvas.onmouseleave = hideAll;
+      if (!c.tip) continue;
+      const { values, t0, hop } = c.series;
+      const i = Math.round((t - t0) / hop);
+      // A series can legitimately have nothing here: loudness only starts at
+      // 3 s and the DR curve at 12.9 s. Drop that chart's readout rather than
+      // clamping to an edge value that was never measured at this time.
+      if (values.length < 2 || i < 0 || i >= values.length) { c.tip.hidden = true; continue; }
+      // Labelled with the cursor's time, not each series' own sample time:
+      // the DR series steps every 0.5 s, so its nearest sample can round to a
+      // different second and three boxes would disagree about one instant.
+      c.tip.textContent =
+        `${formatClock(t)} · ${values[i].toFixed(1).replace('-', '−')} ${c.opts.unit}`;
+      c.tip.style.left = c.map.xAt(i) + 'px';
+      c.tip.style.top = c.map.yAt(values[i]) + 'px';
+      c.tip.hidden = false;
+    }
+  }
+
+  function hideHover() {
+    for (const c of charts) {
+      if (c.cursor) c.cursor.hidden = true;
+      if (c.tip) c.tip.hidden = true;
+    }
   }
 
   // ---- export ----
