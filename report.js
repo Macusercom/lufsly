@@ -721,22 +721,26 @@ export function initReport({ fmt, drBand, peakClass, loudnessVerdict, getPreset,
   const LOUDNESS_T0 = SHORTTERM_OFFSET * HOP_SEC;
   const PEAK_T0 = HOP_SEC;
 
-  // One point per pixel column, carrying that column's maximum. Columns the
-  // series does not reach stay empty rather than being interpolated across, so
-  // a chart whose series starts late (loudness at 3 s) keeps its gap.
+  // One point per pixel column, carrying that column's full range. Keeping only
+  // the maximum would erase every dip shorter than a column — on a 35-minute
+  // file a column spans ~37 hops, so seconds-long drops disappeared entirely.
+  // Columns the series does not reach stay empty rather than being interpolated
+  // across, so a chart whose series starts late (loudness at 3 s) keeps its gap.
   function decimate(values, xAt, plotX0, plotW) {
     const cols = Math.max(1, Math.round(plotW));
     if (values.length <= cols) {
-      return values.map((v, i) => ({ x: xAt(i), v }));
+      return values.map((v, i) => ({ x: xAt(i), lo: v, hi: v }));
     }
-    const max = new Array(cols).fill(-Infinity);
+    const hi = new Array(cols).fill(-Infinity);
+    const lo = new Array(cols).fill(Infinity);
     for (let i = 0; i < values.length; i++) {
       const c = Math.min(cols - 1, Math.max(0, Math.round(xAt(i) - plotX0)));
-      if (values[i] > max[c]) max[c] = values[i];
+      if (values[i] > hi[c]) hi[c] = values[i];
+      if (values[i] < lo[c]) lo[c] = values[i];
     }
     const out = [];
     for (let c = 0; c < cols; c++) {
-      if (max[c] > -Infinity) out.push({ x: plotX0 + c, v: max[c] });
+      if (hi[c] > -Infinity) out.push({ x: plotX0 + c, lo: lo[c], hi: hi[c] });
     }
     return out;
   }
@@ -799,15 +803,17 @@ export function initReport({ fmt, drBand, peakClass, loudnessVerdict, getPreset,
       // series, so no resolution is lost to the reader.
       const points = decimate(values, xAt, rect.x + padL, plotW);
 
-      // Soft fill under the contour, then the contour itself on top.
+      // Soft fill under the curve, then the range itself on top. Where a column
+      // covers many hops the span from its low to its high is what carries the
+      // detail — drawing only one of them flattens every short dip away.
       const baseY = yAt(yMin);
-      ctx.lineWidth = 1.5;
+      ctx.lineWidth = 1;
       ctx.lineJoin = 'round';
       let i = 0;
       while (i < points.length - 1) {
-        const color = bandOf ? bandOf(points[i].v) : col('--accent');
+        const color = bandOf ? bandOf(points[i].hi) : col('--accent');
         let j = i + 1;
-        while (j < points.length - 1 && (!bandOf || bandOf(points[j].v) === color)) j++;
+        while (j < points.length - 1 && (!bandOf || bandOf(points[j].hi) === color)) j++;
 
         // Only single-colour series get the fill. Filling a band-coloured curve
         // draws each run down to the baseline, so every band change becomes a
@@ -815,7 +821,7 @@ export function initReport({ fmt, drBand, peakClass, loudnessVerdict, getPreset,
         if (!bandOf) {
           ctx.beginPath();
           ctx.moveTo(points[i].x, baseY);
-          for (let k = i; k <= j; k++) ctx.lineTo(points[k].x, yAt(points[k].v));
+          for (let k = i; k <= j; k++) ctx.lineTo(points[k].x, yAt(points[k].hi));
           ctx.lineTo(points[j].x, baseY);
           ctx.closePath();
           ctx.save();
@@ -825,10 +831,28 @@ export function initReport({ fmt, drBand, peakClass, loudnessVerdict, getPreset,
           ctx.restore();
         }
 
+        // The range gets a lighter weight than the peak contour: at full
+        // opacity the spans dominate and the chart reads as a solid block,
+        // which is what hiding the minimum was meant to avoid.
+        ctx.save();
+        ctx.globalAlpha = 0.45;
         ctx.strokeStyle = color;
         ctx.beginPath();
         for (let k = i; k <= j; k++) {
-          const y = yAt(points[k].v);
+          const p = points[k];
+          const yHi = yAt(p.hi), yLo = yAt(p.lo);
+          if (yLo - yHi < 0.5) continue;   // nothing to span
+          ctx.moveTo(p.x, yHi);
+          ctx.lineTo(p.x, yLo);
+        }
+        ctx.stroke();
+        ctx.restore();
+
+        // Peak contour on top, at full strength.
+        ctx.strokeStyle = color;
+        ctx.beginPath();
+        for (let k = i; k <= j; k++) {
+          const y = yAt(points[k].hi);
           k === i ? ctx.moveTo(points[k].x, y) : ctx.lineTo(points[k].x, y);
         }
         ctx.stroke();
