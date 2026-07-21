@@ -124,12 +124,157 @@ function sniffSampleRate(data) {
   return null;
 }
 
+// What the file actually is, read from the container rather than trusted from
+// the extension or the browser's MIME guess. Walks the same headers as
+// sniffSampleRate. Both fields are null when they cannot be established —
+// the report shows a dash rather than inventing a value.
+//
+// Must run before decoding: decodeAudioData detaches the ArrayBuffer.
+function sniffFormat(data) {
+  const b = new Uint8Array(data);
+  const dv = new DataView(data);
+  if (b.length < 16) return { codec: null, encoder: null };
+
+  const tag = (o, s) => String.fromCharCode(...b.subarray(o, o + s.length)) === s;
+  // Trailing NULs and padding are common in these string fields.
+  const ascii = (o, n) => String.fromCharCode(...b.subarray(o, o + n))
+    .replace(/\0[\s\S]*$/, '').trim();
+  const find = (needle, from, to) => {
+    const end = Math.min(b.length - needle.length, to);
+    for (let i = from; i <= end; i++) if (tag(i, needle)) return i;
+    return -1;
+  };
+
+  // ---- WAV / RIFF ----
+  if (tag(0, 'RIFF') && tag(8, 'WAVE')) {
+    const WAVE_FORMATS = {
+      1: 'PCM', 3: 'IEEE float', 6: 'A-law', 7: 'µ-law', 0x11: 'IMA ADPCM', 0x55: 'MP3',
+    };
+    let codec = 'WAV', encoder = null;
+    let o = 12;
+    while (o + 8 <= b.length) {
+      const size = dv.getUint32(o + 4, true);
+      if (tag(o, 'fmt ')) {
+        let fmt = dv.getUint16(o + 8, true);
+        const bits = dv.getUint16(o + 22, true);
+        // Extensible: the real format is the first half of the SubFormat GUID.
+        if (fmt === 0xfffe && o + 34 <= b.length) fmt = dv.getUint16(o + 32, true);
+        const name = WAVE_FORMATS[fmt] ?? `format ${fmt}`;
+        codec = `WAV (${name}${bits ? ` ${bits}-bit` : ''})`;
+      } else if (tag(o, 'LIST') && tag(o + 8, 'INFO')) {
+        // ISFT is the "software" field, where encoders record themselves.
+        const isft = find('ISFT', o + 12, o + 8 + size);
+        if (isft > 0) encoder = ascii(isft + 8, dv.getUint32(isft + 4, true)) || null;
+      }
+      o += 8 + size + (size & 1);
+    }
+    return { codec, encoder };
+  }
+
+  // ---- FLAC ----
+  if (tag(0, 'fLaC') && b.length > 30) {
+    const bits = ((((b[20] & 1) << 4) | (b[21] >> 4)) + 1);
+    let encoder = null;
+    // Metadata blocks: 1 byte (last-flag + type) then a 24-bit length.
+    let o = 4;
+    while (o + 4 <= b.length) {
+      const last = b[o] & 0x80, type = b[o] & 0x7f;
+      const len = (b[o + 1] << 16) | (b[o + 2] << 8) | b[o + 3];
+      if (type === 4 && o + 8 <= b.length) {          // VORBIS_COMMENT
+        const vlen = dv.getUint32(o + 4, true);
+        encoder = ascii(o + 8, vlen) || null;
+      }
+      if (last) break;
+      o += 4 + len;
+    }
+    return { codec: `FLAC (${bits}-bit)`, encoder };
+  }
+
+  // ---- Ogg: Opus or Vorbis ----
+  if (tag(0, 'OggS')) {
+    const limit = Math.min(b.length, 65536);
+    const opus = find('OpusHead', 0, limit);
+    if (opus >= 0) {
+      const tags = find('OpusTags', 0, limit);
+      const vendor = tags >= 0 ? ascii(tags + 12, dv.getUint32(tags + 8, true)) : '';
+      return { codec: 'Opus', encoder: vendor || null };
+    }
+    const vorbis = find('vorbis', 0, limit);
+    if (vorbis >= 0) {
+      // Comment header is packet type 3 followed by "vorbis", then the vendor.
+      let encoder = null;
+      for (let i = 0; i < limit - 7; i++) {
+        if (b[i] === 0x03 && tag(i + 1, 'vorbis')) {
+          encoder = ascii(i + 11, dv.getUint32(i + 7, true)) || null;
+          break;
+        }
+      }
+      return { codec: 'Vorbis', encoder };
+    }
+    return { codec: 'Ogg', encoder: null };
+  }
+
+  // ---- MP4 / M4A: brand only, no box walking ----
+  if (tag(4, 'ftyp')) {
+    const brand = ascii(8, 4);
+    const codec = /M4A|mp4|iso|M4B/i.test(brand) ? 'AAC (M4A)' : `MP4 (${brand})`;
+    return { codec, encoder: null };
+  }
+
+  // ---- MP3 ----
+  // Two encoder claims can coexist: the LAME tag names the codec that actually
+  // encoded the audio, while ID3's TSSE is whatever muxed the file (ffmpeg
+  // writes "Lavf…" there). For a row labelled "Encoder" the codec wins, with
+  // TSSE as the fallback for files LAME never touched.
+  let o = 0, tsseEncoder = null;
+  if (tag(0, 'ID3')) {
+    const size = (b[6] << 21) | (b[7] << 14) | (b[8] << 7) | b[9];
+    for (const frame of ['TSSE', 'TENC']) {
+      const at = find(frame, 10, 10 + size);
+      if (at > 0) {
+        const len = dv.getUint32(at + 4, false);
+        // First byte of a text frame is the encoding marker.
+        tsseEncoder = ascii(at + 11, Math.max(0, len - 1)) || null;
+        if (tsseEncoder) break;
+      }
+    }
+    o = 10 + size;
+  }
+  let encoder = null;
+  // LAME stamps its version into the Xing/Info header of the first frame; the
+  // exact offset varies with version and channel mode, so match the string.
+  const lame = find('LAME', o, o + 8192);
+  if (lame > 0) {
+    const s = ascii(lame, 9);
+    if (/^LAME\d/.test(s)) encoder = s.replace(/^LAME/, 'LAME ');
+  }
+  encoder ??= tsseEncoder;
+  const LAYERS = { 1: 'Layer III', 2: 'Layer II', 3: 'Layer I' };
+  const VERSIONS = { 3: 'MPEG-1', 2: 'MPEG-2', 0: 'MPEG-2.5' };
+  const BITRATES_V1_L3 = [0, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320];
+  const BITRATES_V2_L3 = [0, 8, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 144, 160];
+  for (let i = o; i < Math.min(b.length - 4, o + 65536); i++) {
+    if (b[i] !== 0xff || (b[i + 1] & 0xe0) !== 0xe0) continue;
+    const version = (b[i + 1] >> 3) & 0x03;
+    const layer = (b[i + 1] >> 1) & 0x03;
+    const brIdx = b[i + 2] >> 4;
+    if (layer === 0 || !VERSIONS[version]) continue;
+    const table = version === 3 ? BITRATES_V1_L3 : BITRATES_V2_L3;
+    const kbps = layer === 1 && brIdx > 0 && brIdx < 15 ? table[brIdx] : 0;
+    const detail = [VERSIONS[version], LAYERS[layer], kbps ? `${kbps} kbps` : null]
+      .filter(Boolean).join(', ');
+    return { codec: `MP3 (${detail})`, encoder };
+  }
+  return { codec: null, encoder };
+}
+
 // Decode and measure one file. Progress is reported through the callback so
 // the caller owns the UI; the AudioBuffer is released as soon as it has been
 // walked, leaving only the ~10 values/s history behind.
 export async function analyzeFile(file, onProgress) {
   const data = await file.arrayBuffer();
   const rate = sniffSampleRate(data);
+  const format = sniffFormat(data);
 
   let buffer;
   if (rate >= 3000 && rate <= 768000) {
@@ -173,7 +318,12 @@ export async function analyzeFile(file, onProgress) {
   stats.shortTermMax = maxValue(analyzer.shortTermLoudness);
 
   return {
-    bufferInfo: { sampleRate: buffer.sampleRate, numberOfChannels: buffer.numberOfChannels },
+    bufferInfo: {
+      sampleRate: buffer.sampleRate,
+      numberOfChannels: buffer.numberOfChannels,
+      codec: format.codec,
+      encoder: format.encoder,
+    },
     stats,
     history: analyzer.shortTermHistory,
     peaks: analyzer.truePeakHistory,
@@ -197,6 +347,9 @@ function maxPowerToLufs(powers) {
 export function initReport({ fmt, drBand, peakClass, loudnessVerdict, getPreset, getTargetLabel }) {
   let lastReportText = '';
   let current = null; // { fileName, bufferInfo, stats, history, model }
+  // The charts of the report currently on screen, rebuilt on every render so a
+  // hover on one can place the crosshair on all of them.
+  const charts = [];
 
   // Read live so a colour change would be picked up; also keeps the exported
   // image in sync with the on-screen palette.
@@ -253,6 +406,8 @@ export function initReport({ fmt, drBand, peakClass, loudnessVerdict, getPreset,
       [msg('duration'), formatTime(s.durationSec), '', null],
       [msg('sampleRate'), bufferInfo.sampleRate + ' Hz', '', null],
       [msg('channels'), String(bufferInfo.numberOfChannels), '', null],
+      [msg('codec'), bufferInfo.codec || '–', '', 'infoCodec'],
+      [msg('encoder'), bufferInfo.encoder || '–', '', 'infoEncoder'],
     ];
     return { fileName, preset, targetLabel: getTargetLabel(), verdicts, rows };
   }
@@ -338,6 +493,9 @@ export function initReport({ fmt, drBand, peakClass, loudnessVerdict, getPreset,
     // Unhide before drawing: a hidden section has clientWidth 0, which would
     // size the canvas from the fallback and stretch it to the wrong aspect.
     $('report').hidden = false;
+    // Rebuilt below; without this every re-render (target or language change)
+    // would leave the previous run's charts in the registry.
+    charts.length = 0;
     const tpLimit = model.preset.tpLimit ?? -1;
     drawChartOnScreen('report-chart', 'chart-tip',
       { values: history, t0: LOUDNESS_T0, hop: HOP_SEC },
@@ -645,11 +803,16 @@ export function initReport({ fmt, drBand, peakClass, loudnessVerdict, getPreset,
 
     const tip = $(tipId);
     const cursor = canvas.parentElement.querySelector('.chart-cursor');
-    const { values, t0, hop } = series;
     // The cursor is a positioned element rather than a canvas redraw: moving a
     // div costs nothing, whereas repainting the chart on every mousemove would
     // redraw tens of thousands of points.
-    const hideAll = () => { tip.hidden = true; if (cursor) cursor.hidden = true; };
+    charts.push({ cursor, map });
+
+    const { values, t0, hop } = series;
+    const hideCursors = () => {
+      for (const c of charts) if (c.cursor) c.cursor.hidden = true;
+    };
+    const hideAll = () => { tip.hidden = true; hideCursors(); };
     canvas.onmousemove = (e) => {
       if (values.length < 2) return hideAll();
       const r = canvas.getBoundingClientRect();
@@ -658,16 +821,20 @@ export function initReport({ fmt, drBand, peakClass, loudnessVerdict, getPreset,
       const t = ((x - map.padL) / map.plotW) * opts.durationSec;
       const i = Math.round((t - t0) / hop);
       if (i < 0 || i >= values.length) return hideAll();
-      const px = map.xAt(i);
-      tip.textContent = `${formatClock(t0 + i * hop)} · ${values[i].toFixed(1).replace('-', '−')} ${opts.unit}`;
-      tip.style.left = px + 'px';
+      const tAt = t0 + i * hop;
+      tip.textContent = `${formatClock(tAt)} · ${values[i].toFixed(1).replace('-', '−')} ${opts.unit}`;
+      tip.style.left = map.xAt(i) + 'px';
       tip.style.top = map.yAt(values[i]) + 'px';
       tip.hidden = false;
-      if (cursor) {
-        cursor.style.left = px + 'px';
-        cursor.style.top = map.padT + 'px';
-        cursor.style.height = map.plotH + 'px';
-        cursor.hidden = false;
+      // The charts share a time axis, so mark the same instant on all of them.
+      // Positioned per chart from its own map rather than by copying pixels, so
+      // this still holds if a chart is ever sized differently.
+      for (const c of charts) {
+        if (!c.cursor) continue;
+        c.cursor.style.left = c.map.xAtTime(tAt) + 'px';
+        c.cursor.style.top = c.map.padT + 'px';
+        c.cursor.style.height = c.map.plotH + 'px';
+        c.cursor.hidden = false;
       }
     };
     canvas.onmouseleave = hideAll;
