@@ -645,7 +645,7 @@ export function initReport({ fmt, drBand, peakClass, loudnessVerdict, getPreset,
     drawChartOnScreen('peak-chart', 'peak-tip',
       { values: peaks, t0: PEAK_T0, hop: HOP_SEC },
       { yMin: -40, yMax: 3, step: 10, durationSec: s.durationSec, unit: 'dBTP',
-        limit: tpLimit });
+        limit: tpLimit, fill: false });
     drawChartOnScreen('dr-chart', 'dr-tip', drSeries(entry),
       drChartOpts(model.preset, s.durationSec));
 
@@ -757,9 +757,12 @@ export function initReport({ fmt, drBand, peakClass, loudnessVerdict, getPreset,
   //   target — the loudness goal: amber reference line, no markers.
   //   limit  — the peak ceiling: red line, plus a dot on every hop above it.
   //   bandOf — colours the curve per point, echoing the DR bar's bands.
+  //   fill   — area down to the floor. Reads as "how much" and suits loudness;
+  //            a peak is an instantaneous maximum, so filling under it implies
+  //            a magnitude that is not there, and it buries the range band.
   function drawChartInto(ctx, rect, series, opts) {
     const { values, t0, hop } = series;
-    const { yMin, yMax, step, ticks, durationSec, target, limit, unit, bandOf } = opts;
+    const { yMin, yMax, step, ticks, durationSec, target, limit, unit, bandOf, fill = true } = opts;
     ctx.save();
     ctx.fillStyle = col('--page');
     ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
@@ -818,7 +821,7 @@ export function initReport({ fmt, drBand, peakClass, loudnessVerdict, getPreset,
         // Only single-colour series get the fill. Filling a band-coloured curve
         // draws each run down to the baseline, so every band change becomes a
         // hard vertical edge and the chart turns into a barcode.
-        if (!bandOf) {
+        if (fill && !bandOf) {
           ctx.beginPath();
           ctx.moveTo(points[i].x, baseY);
           for (let k = i; k <= j; k++) ctx.lineTo(points[k].x, yAt(points[k].hi));
@@ -1117,7 +1120,7 @@ export function initReport({ fmt, drBand, peakClass, loudnessVerdict, getPreset,
     y += 8;
     drawChartInto(ctx, { x: P, y, w: W - 2 * P, h: chartH - 20 },
       { values: peaks, t0: PEAK_T0, hop: HOP_SEC },
-      { yMin: -40, yMax: 3, step: 10, durationSec, unit: 'dBTP', limit: tpLimit });
+      { yMin: -40, yMax: 3, step: 10, durationSec, unit: 'dBTP', limit: tpLimit, fill: false });
     y += chartH - 20;
 
     if (clipLine) {
