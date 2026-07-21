@@ -9,6 +9,7 @@ const MOMENTARY_SUBBLOCKS = 4;     // 400 ms
 const SHORTTERM_SUBBLOCKS = 30;    // 3 s
 const OVERSAMPLE = 4;              // true-peak oversampling factor
 const TP_TAPS_PER_PHASE = 12;
+const TP_FLOOR_DBTP = -100;        // digital silence is −Infinity dB; floor it for plots
 
 export function powerToLufs(power) {
   return power > 0 ? -0.691 + 10 * Math.log10(power) : -Infinity;
@@ -194,8 +195,10 @@ export class LoudnessAnalyzer {
     this.blockPowers = [];                 // 400 ms momentary powers ≥ abs gate (for integrated)
     this.shortTermLoudness = [];           // gated short-term values (for LRA)
     this.shortTermHistory = [];            // every short-term value, one per 100 ms hop (for plots)
+    this.truePeakHistory = [];             // dBTP max per 100 ms hop (for plots)
     this.momentary = -Infinity;
     this.shortTerm = -Infinity;
+    this.subTruePeak = 0;                  // linear peak so far in the open sub-block
     this.currentTruePeak = 0;
     this.silentSubblocks = 0;
     this.totalSamples = 0;
@@ -206,8 +209,6 @@ export class LoudnessAnalyzer {
     const n = channels[0].length;
     this.totalSamples += n;
     if (!this.scratch || this.scratch.length < n) this.scratch = new Float32Array(n);
-
-    this.currentTruePeak = this.truePeak.process(channels);
 
     // K-weight each channel, accumulate weighted squared sums into sub-blocks
     for (let c = 0; c < channels.length && c < this.nChannels; c++) {
@@ -226,8 +227,16 @@ export class LoudnessAnalyzer {
 
     const sq = this.sqBuf;
     let i = 0;
+    let chunkPeak = 0;
     while (i < n) {
       const take = Math.min(n - i, this.subLen - this.subPos);
+      // Metered on the same segments as the loudness sub-blocks so each 100 ms
+      // hop gets its own peak. The meter carries its filter history across
+      // calls, so feeding it contiguous slices is equivalent to one call over
+      // the whole chunk — the reported maxima are unchanged.
+      const segPeak = this.truePeak.process(channels.map((ch) => ch.subarray(i, i + take)));
+      if (segPeak > this.subTruePeak) this.subTruePeak = segPeak;
+      if (segPeak > chunkPeak) chunkPeak = segPeak;
       let s = this.subSum;
       for (let j = i; j < i + take; j++) s += sq[j];
       this.subSum = s;
@@ -235,9 +244,12 @@ export class LoudnessAnalyzer {
       i += take;
       if (this.subPos === this.subLen) this._finishSubblock();
     }
+    this.currentTruePeak = chunkPeak;
   }
 
   _finishSubblock() {
+    this.truePeakHistory.push(Math.max(linearToDb(this.subTruePeak), TP_FLOOR_DBTP));
+    this.subTruePeak = 0;
     this.subblocks.push(this.subSum / this.subLen);
     this.subSum = 0;
     this.subPos = 0;

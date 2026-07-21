@@ -132,8 +132,15 @@
       <h3 data-i18n="loudnessHistory">Short-term loudness over time</h3>
       <div class="chart-wrap">
         <canvas id="report-chart"></canvas>
-        <div id="chart-tip" hidden></div>
+        <div class="chart-tip" id="chart-tip" hidden></div>
       </div>
+
+      <h3 data-i18n="peakHistory">True Peak over time</h3>
+      <div class="chart-wrap">
+        <canvas id="peak-chart"></canvas>
+        <div class="chart-tip" id="peak-tip" hidden></div>
+      </div>
+      <p class="clip-times" id="clip-times" hidden></p>
 
       <div class="report-actions">
         <button type="button" id="btn-copy" data-i18n="copyReport">Copy</button>

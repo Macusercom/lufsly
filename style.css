@@ -320,12 +320,16 @@ main {
 }
 
 .chart-wrap { position: relative; }
-#report-chart { width: 100%; display: block; background: var(--page); border-radius: 8px; }
-#chart-tip {
+.chart-wrap canvas { width: 100%; display: block; background: var(--page); border-radius: 8px; }
+.chart-tip {
   position: absolute; pointer-events: none;
   background: var(--surface); border: 1px solid var(--border); border-radius: 6px;
   padding: 4px 8px; font-size: 12px; color: var(--ink-2);
   transform: translate(-50%, -130%); white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.clip-times {
+  margin: 8px 0 0; font-size: 12px; color: var(--critical);
   font-variant-numeric: tabular-nums;
 }
 .report-actions { display: flex; gap: 10px; margin-top: 20px; flex-wrap: wrap; }

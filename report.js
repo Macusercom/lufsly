@@ -122,6 +122,7 @@ export async function analyzeFile(file, onProgress) {
     bufferInfo: { sampleRate: buffer.sampleRate, numberOfChannels: buffer.numberOfChannels },
     stats,
     history: analyzer.shortTermHistory,
+    peaks: analyzer.truePeakHistory,
   };
 }
 
@@ -218,9 +219,9 @@ export function initReport({ fmt, drBand, peakClass, loudnessVerdict, getPreset,
   }
 
   function render(entry, scroll) {
-    const { fileName, bufferInfo, stats: s, history } = entry;
+    const { fileName, bufferInfo, stats: s, history, peaks = [] } = entry;
     const model = buildModel(fileName, bufferInfo, s);
-    current = { fileName, bufferInfo, stats: s, history, model };
+    current = { fileName, bufferInfo, stats: s, history, peaks, model };
     $('report-file').textContent = fileName;
 
     const verdictsEl = $('report-verdicts');
@@ -266,7 +267,19 @@ export function initReport({ fmt, drBand, peakClass, loudnessVerdict, getPreset,
     // Unhide before drawing: a hidden section has clientWidth 0, which would
     // size the canvas from the fallback and stretch it to the wrong aspect.
     $('report').hidden = false;
-    drawChartOnScreen(history, model.preset.target);
+    const tpLimit = model.preset.tpLimit ?? -1;
+    drawChartOnScreen('report-chart', 'chart-tip',
+      { values: history, t0: LOUDNESS_T0, hop: HOP_SEC },
+      { yMin: -40, yMax: 0, step: 10, durationSec: s.durationSec, unit: 'LUFS',
+        limit: null, target: model.preset.target });
+    drawChartOnScreen('peak-chart', 'peak-tip',
+      { values: peaks, t0: PEAK_T0, hop: HOP_SEC },
+      { yMin: -40, yMax: 3, step: 10, durationSec: s.durationSec, unit: 'dBTP',
+        limit: tpLimit });
+
+    const clipEl = $('clip-times');
+    clipEl.textContent = clipSummary(peaks, tpLimit);
+    clipEl.hidden = !clipEl.textContent;
 
     lastReportText = [
       `LUFSly – ${msg('reportTitle')}: ${fileName}`,
@@ -314,18 +327,47 @@ export function initReport({ fmt, drBand, peakClass, loudnessVerdict, getPreset,
     return `${m}:${String(s).padStart(2, '0')} min`;
   }
 
+  // Axis ticks and clip times want a bare clock, without formatTime's " min".
+  function formatClock(sec) {
+    const t = Math.max(0, Math.round(sec));
+    const h = Math.floor(t / 3600);
+    const m = Math.floor((t % 3600) / 60);
+    const s = t % 60;
+    const mm = h ? String(m).padStart(2, '0') : String(m);
+    return (h ? `${h}:` : '') + `${mm}:${String(s).padStart(2, '0')}`;
+  }
+
   // ---- chart drawing (shared by screen and export) ----
 
-  function drawChartInto(ctx, rect, history, target) {
+  // Both charts share one time domain so their x axes line up: the loudness
+  // series only starts at 3 s (short-term needs a full 3 s window) while peaks
+  // start at the first 100 ms hop. x therefore comes from absolute time, never
+  // from the array index — indexing would shift the peak chart 3 s left.
+  const LOUDNESS_T0 = SHORTTERM_OFFSET * HOP_SEC;
+  const PEAK_T0 = HOP_SEC;
+
+  const TIME_STEPS = [1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 900, 1800, 3600];
+  function niceTimeStep(span, target = 6) {
+    return TIME_STEPS.find((s) => s >= span / target) ?? TIME_STEPS[TIME_STEPS.length - 1];
+  }
+
+  // series: { values, t0, hop }
+  // opts: { yMin, yMax, step, durationSec, unit, target, limit }
+  //   target — the loudness goal: amber reference line, no markers.
+  //   limit  — the peak ceiling: red line, plus a dot on every hop above it.
+  function drawChartInto(ctx, rect, series, opts) {
+    const { values, t0, hop } = series;
+    const { yMin, yMax, step, durationSec, target, limit, unit } = opts;
     ctx.save();
     ctx.fillStyle = col('--page');
     ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
 
-    const yMin = -40, yMax = 0;
-    const padL = 32, padR = 10, padT = 8, padB = 18;
+    const padL = 32, padR = 10, padT = 8, padB = 26;
     const plotW = rect.w - padL - padR;
     const plotH = rect.h - padT - padB;
-    const xAt = (i) => rect.x + padL + (history.length < 2 ? 0 : (i / (history.length - 1)) * plotW);
+    const span = durationSec > 0 ? durationSec : 1;
+    const xAtTime = (t) => rect.x + padL + Math.min(1, Math.max(0, t / span)) * plotW;
+    const xAt = (i) => xAtTime(t0 + i * hop);
     const yAt = (v) => rect.y + padT + (1 - (Math.max(yMin, Math.min(yMax, v)) - yMin) / (yMax - yMin)) * plotH;
 
     ctx.strokeStyle = col('--grid');
@@ -333,7 +375,9 @@ export function initReport({ fmt, drBand, peakClass, loudnessVerdict, getPreset,
     ctx.font = '10px system-ui, sans-serif';
     ctx.textAlign = 'right';
     ctx.lineWidth = 1;
-    for (let v = yMax; v >= yMin; v -= 10) {
+    // Anchored on 0 rather than yMax, so headroom above 0 dBTP stays unlabelled
+    // instead of yielding a 3 / −7 / −17 ladder.
+    for (let v = Math.floor(yMax / step) * step; v >= yMin; v -= step) {
       const y = yAt(v);
       ctx.beginPath();
       ctx.moveTo(rect.x + padL, y);
@@ -342,14 +386,16 @@ export function initReport({ fmt, drBand, peakClass, loudnessVerdict, getPreset,
       ctx.fillText(String(v).replace('-', '−'), rect.x + padL - 4, y + 3);
     }
 
-    if (history.length >= 2) {
-      // series first, thin, so the target line stays legible on top
+    drawTimeAxis(ctx, rect, padL, padR, padB, span, xAtTime);
+
+    if (values.length >= 2) {
+      // series first, thin, so the limit line stays legible on top
       ctx.strokeStyle = col('--accent');
       ctx.lineWidth = 1.5;
       ctx.lineJoin = 'round';
       ctx.beginPath();
-      for (let i = 0; i < history.length; i++) {
-        const x = xAt(i), y = yAt(history[i]);
+      for (let i = 0; i < values.length; i++) {
+        const x = xAt(i), y = yAt(values[i]);
         i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
       }
       ctx.stroke();
@@ -361,14 +407,54 @@ export function initReport({ fmt, drBand, peakClass, loudnessVerdict, getPreset,
       ctx.fillText('–', rect.x + rect.w / 2, rect.y + rect.h / 2);
     }
 
-    if (target != null) drawTargetLine(ctx, rect.x + padL, rect.x + rect.w - padR, yAt(target), target);
+    if (target != null) {
+      drawLimitLine(ctx, rect.x + padL, rect.x + rect.w - padR, yAt(target),
+        String(target).replace('-', '−') + ' ' + unit, col('--warning'));
+    }
+
+    if (limit != null) {
+      // Every hop over the limit gets a dot, so a single overshoot and a
+      // continuously clipped passage look different at a glance.
+      ctx.fillStyle = col('--critical');
+      for (let i = 0; i < values.length; i++) {
+        if (values[i] <= limit) continue;
+        ctx.beginPath();
+        ctx.arc(xAt(i), yAt(values[i]), 2, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      drawLimitLine(ctx, rect.x + padL, rect.x + rect.w - padR, yAt(limit),
+        String(limit).replace('-', '−') + ' ' + unit, col('--critical'));
+    }
+
     ctx.restore();
-    return { padL, padR, plotW, xAt, yAt };
+    return { padL, padR, plotW, xAt, yAt, xAtTime };
   }
 
-  function drawTargetLine(ctx, x0, x1, y, target) {
+  function drawTimeAxis(ctx, rect, padL, padR, padB, span, xAtTime) {
+    const step = niceTimeStep(span);
+    const yBase = rect.y + rect.h - padB;
+    const xEnd = rect.x + rect.w - padR;
     ctx.save();
-    ctx.strokeStyle = col('--warning');
+    ctx.strokeStyle = col('--grid');
+    ctx.fillStyle = col('--muted');
+    ctx.font = '10px system-ui, sans-serif';
+    ctx.lineWidth = 1;
+    for (let t = 0; t <= span + 1e-6; t += step) {
+      const x = xAtTime(t);
+      ctx.beginPath();
+      ctx.moveTo(x, yBase);
+      ctx.lineTo(x, yBase + 4);
+      ctx.stroke();
+      // Nudge the end labels inward so they cannot run off either edge.
+      ctx.textAlign = t === 0 ? 'left' : (x > xEnd - 16 ? 'right' : 'center');
+      ctx.fillText(formatClock(t), x, yBase + 15);
+    }
+    ctx.restore();
+  }
+
+  function drawLimitLine(ctx, x0, x1, y, label, color) {
+    ctx.save();
+    ctx.strokeStyle = color;
     ctx.lineWidth = 1.5;
     ctx.setLineDash([6, 4]);
     ctx.beginPath();
@@ -376,21 +462,43 @@ export function initReport({ fmt, drBand, peakClass, loudnessVerdict, getPreset,
     ctx.lineTo(x1, y);
     ctx.stroke();
     ctx.setLineDash([]);
-    const label = String(target).replace('-', '−') + ' LUFS';
     ctx.font = '10px system-ui, sans-serif';
     ctx.textAlign = 'right';
     ctx.textBaseline = 'bottom';
     const w = ctx.measureText(label).width;
     ctx.fillStyle = col('--surface');
     ctx.fillRect(x1 - w - 5, y - 14, w + 5, 13);
-    ctx.fillStyle = col('--warning');
+    ctx.fillStyle = color;
     ctx.fillText(label, x1 - 1, y - 2);
     ctx.textBaseline = 'alphabetic';
     ctx.restore();
   }
 
-  function drawChartOnScreen(history, target) {
-    const canvas = $('report-chart');
+  // Consecutive over-limit hops are one event, not thirty: coalesce runs less
+  // than a second apart so the listed times stay readable.
+  function clipEvents(values, limit, t0, hop, gapSec = 1) {
+    const times = [];
+    let last = -Infinity;
+    for (let i = 0; i < values.length; i++) {
+      if (values[i] <= limit) continue;
+      const t = t0 + i * hop;
+      if (t - last > gapSec) times.push(t);
+      last = t;
+    }
+    return times;
+  }
+
+  function clipSummary(peaks, limit) {
+    const times = clipEvents(peaks, limit, PEAK_T0, HOP_SEC);
+    if (!times.length) return '';
+    const shown = times.slice(0, 5).map(formatClock).join(', ');
+    const rest = times.length - 5;
+    const label = msg('clipTimes', [String(limit).replace('-', '−'), shown]);
+    return rest > 0 ? `${label} ${msg('clipMore', [rest])}` : label;
+  }
+
+  function drawChartOnScreen(canvasId, tipId, series, opts) {
+    const canvas = $(canvasId);
     const cssW = canvas.parentElement.clientWidth || 300;
     const cssH = 170;
     const dpr = window.devicePixelRatio || 1;
@@ -400,19 +508,21 @@ export function initReport({ fmt, drBand, peakClass, loudnessVerdict, getPreset,
     const ctx = canvas.getContext('2d');
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-    const map = drawChartInto(ctx, { x: 0, y: 0, w: cssW, h: cssH }, history, target);
+    const map = drawChartInto(ctx, { x: 0, y: 0, w: cssW, h: cssH }, series, opts);
 
-    const tip = $('chart-tip');
+    const tip = $(tipId);
+    const { values, t0, hop } = series;
     canvas.onmousemove = (e) => {
-      if (history.length < 2) return;
+      if (values.length < 2) return;
       const r = canvas.getBoundingClientRect();
       const x = e.clientX - r.left;
-      const i = Math.round(((x - map.padL) / map.plotW) * (history.length - 1));
-      if (i < 0 || i >= history.length) { tip.hidden = true; return; }
-      const t = (i + SHORTTERM_OFFSET) * HOP_SEC;
-      tip.textContent = `${formatTime(t)} · ${history[i].toFixed(1)} LUFS`;
+      // Invert the time mapping, then land on this series' nearest sample.
+      const t = ((x - map.padL) / map.plotW) * opts.durationSec;
+      const i = Math.round((t - t0) / hop);
+      if (i < 0 || i >= values.length) { tip.hidden = true; return; }
+      tip.textContent = `${formatClock(t0 + i * hop)} · ${values[i].toFixed(1)} ${opts.unit}`;
       tip.style.left = map.xAt(i) + 'px';
-      tip.style.top = map.yAt(history[i]) + 'px';
+      tip.style.top = map.yAt(values[i]) + 'px';
       tip.hidden = false;
     };
     canvas.onmouseleave = () => { tip.hidden = true; };
@@ -423,8 +533,11 @@ export function initReport({ fmt, drBand, peakClass, loudnessVerdict, getPreset,
   // Compose the whole report into an offscreen canvas (2× for crisp output).
   function renderReportImage() {
     if (!current) return null;
-    const { model, history } = current;
+    const { model, history, peaks = [], stats } = current;
+    const durationSec = stats.durationSec;
     const target = model.preset.target;
+    const tpLimit = model.preset.tpLimit ?? -1;
+    const clipLine = clipSummary(peaks, tpLimit);
     const scale = 2;
     const W = 660;
     const P = 26;
@@ -433,8 +546,9 @@ export function initReport({ fmt, drBand, peakClass, loudnessVerdict, getPreset,
     const verdictH = model.verdicts.length * 24 + 10;
     const tableH = model.rows.length * rowH + 12;
     const chartH = 190;
+    const clipH = clipLine ? 18 : 0;
     const footerH = 30;
-    const H = P + headerH + verdictH + tableH + 26 + chartH + footerH;
+    const H = P + headerH + verdictH + tableH + 26 + chartH * 2 + clipH + footerH;
 
     const canvas = document.createElement('canvas');
     canvas.width = W * scale;
@@ -496,7 +610,26 @@ export function initReport({ fmt, drBand, peakClass, loudnessVerdict, getPreset,
     ctx.font = '12px system-ui, sans-serif';
     ctx.fillText(msg('loudnessHistory'), P, y);
     y += 8;
-    drawChartInto(ctx, { x: P, y, w: W - 2 * P, h: chartH - 20 }, history, target);
+    drawChartInto(ctx, { x: P, y, w: W - 2 * P, h: chartH - 20 },
+      { values: history, t0: LOUDNESS_T0, hop: HOP_SEC },
+      { yMin: -40, yMax: 0, step: 10, durationSec, unit: 'LUFS', target });
+    y += chartH - 20 + 22;
+
+    ctx.textAlign = 'left';
+    ctx.fillStyle = col('--muted');
+    ctx.font = '12px system-ui, sans-serif';
+    ctx.fillText(msg('peakHistory'), P, y);
+    y += 8;
+    drawChartInto(ctx, { x: P, y, w: W - 2 * P, h: chartH - 20 },
+      { values: peaks, t0: PEAK_T0, hop: HOP_SEC },
+      { yMin: -40, yMax: 3, step: 10, durationSec, unit: 'dBTP', limit: tpLimit });
+    y += chartH - 20;
+
+    if (clipLine) {
+      ctx.fillStyle = col('--critical');
+      ctx.font = '12px system-ui, sans-serif';
+      ctx.fillText(truncate(ctx, clipLine, W - 2 * P), P, y + 14);
+    }
 
     return canvas;
   }
