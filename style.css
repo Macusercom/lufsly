@@ -321,6 +321,10 @@ main {
 
 .chart-wrap { position: relative; }
 .chart-wrap canvas { width: 100%; display: block; background: var(--page); border-radius: 8px; }
+.chart-cursor {
+  position: absolute; pointer-events: none;
+  width: 1px; background: var(--ink-2); opacity: 0.55;
+}
 .chart-tip {
   position: absolute; pointer-events: none;
   background: var(--surface); border: 1px solid var(--border); border-radius: 6px;

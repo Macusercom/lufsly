@@ -419,6 +419,26 @@ export function initReport({ fmt, drBand, peakClass, loudnessVerdict, getPreset,
   const LOUDNESS_T0 = SHORTTERM_OFFSET * HOP_SEC;
   const PEAK_T0 = HOP_SEC;
 
+  // One point per pixel column, carrying that column's maximum. Columns the
+  // series does not reach stay empty rather than being interpolated across, so
+  // a chart whose series starts late (loudness at 3 s) keeps its gap.
+  function decimate(values, xAt, plotX0, plotW) {
+    const cols = Math.max(1, Math.round(plotW));
+    if (values.length <= cols) {
+      return values.map((v, i) => ({ x: xAt(i), v }));
+    }
+    const max = new Array(cols).fill(-Infinity);
+    for (let i = 0; i < values.length; i++) {
+      const c = Math.min(cols - 1, Math.max(0, Math.round(xAt(i) - plotX0)));
+      if (values[i] > max[c]) max[c] = values[i];
+    }
+    const out = [];
+    for (let c = 0; c < cols; c++) {
+      if (max[c] > -Infinity) out.push({ x: plotX0 + c, v: max[c] });
+    }
+    return out;
+  }
+
   const TIME_STEPS = [1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 900, 1800, 3600];
   function niceTimeStep(span, target = 6) {
     return TIME_STEPS.find((s) => s >= span / target) ?? TIME_STEPS[TIME_STEPS.length - 1];
@@ -470,35 +490,47 @@ export function initReport({ fmt, drBand, peakClass, loudnessVerdict, getPreset,
     drawTimeAxis(ctx, rect, padL, padR, padB, span, xAtTime);
 
     if (values.length >= 2) {
-      // series first, thin, so the limit line stays legible on top
+      // A 35-minute file is ~21 k hops across ~570 px — 37 line segments per
+      // pixel column, which is pure overdraw and reads as a solid block. Reduce
+      // to one point per column first, keeping each column's maximum since that
+      // is what a peak reading means. The hover tooltip still indexes the full
+      // series, so no resolution is lost to the reader.
+      const points = decimate(values, xAt, rect.x + padL, plotW);
+
+      // Soft fill under the contour, then the contour itself on top.
+      const baseY = yAt(yMin);
       ctx.lineWidth = 1.5;
       ctx.lineJoin = 'round';
-      if (bandOf) {
-        // Stroked in runs of one colour: a per-segment stroke would cost a path
-        // per point, and the band only changes a handful of times.
-        let i = 0;
-        while (i < values.length - 1) {
-          const color = bandOf(values[i]);
-          ctx.strokeStyle = color;
+      let i = 0;
+      while (i < points.length - 1) {
+        const color = bandOf ? bandOf(points[i].v) : col('--accent');
+        let j = i + 1;
+        while (j < points.length - 1 && (!bandOf || bandOf(points[j].v) === color)) j++;
+
+        // Only single-colour series get the fill. Filling a band-coloured curve
+        // draws each run down to the baseline, so every band change becomes a
+        // hard vertical edge and the chart turns into a barcode.
+        if (!bandOf) {
           ctx.beginPath();
-          ctx.moveTo(xAt(i), yAt(values[i]));
-          let j = i + 1;
-          ctx.lineTo(xAt(j), yAt(values[j]));
-          while (j < values.length - 1 && bandOf(values[j]) === color) {
-            j++;
-            ctx.lineTo(xAt(j), yAt(values[j]));
-          }
-          ctx.stroke();
-          i = j;
+          ctx.moveTo(points[i].x, baseY);
+          for (let k = i; k <= j; k++) ctx.lineTo(points[k].x, yAt(points[k].v));
+          ctx.lineTo(points[j].x, baseY);
+          ctx.closePath();
+          ctx.save();
+          ctx.globalAlpha = 0.22;
+          ctx.fillStyle = color;
+          ctx.fill();
+          ctx.restore();
         }
-      } else {
-        ctx.strokeStyle = col('--accent');
+
+        ctx.strokeStyle = color;
         ctx.beginPath();
-        for (let i = 0; i < values.length; i++) {
-          const x = xAt(i), y = yAt(values[i]);
-          i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+        for (let k = i; k <= j; k++) {
+          const y = yAt(points[k].v);
+          k === i ? ctx.moveTo(points[k].x, y) : ctx.lineTo(points[k].x, y);
         }
         ctx.stroke();
+        i = j;
       }
     } else {
       // Files under ~3 s never produce a short-term value.
@@ -528,7 +560,7 @@ export function initReport({ fmt, drBand, peakClass, loudnessVerdict, getPreset,
     }
 
     ctx.restore();
-    return { padL, padR, plotW, xAt, yAt, xAtTime };
+    return { padL, padR, padT, plotW, plotH, xAt, yAt, xAtTime };
   }
 
   function drawTimeAxis(ctx, rect, padL, padR, padB, span, xAtTime) {
@@ -612,21 +644,33 @@ export function initReport({ fmt, drBand, peakClass, loudnessVerdict, getPreset,
     const map = drawChartInto(ctx, { x: 0, y: 0, w: cssW, h: cssH }, series, opts);
 
     const tip = $(tipId);
+    const cursor = canvas.parentElement.querySelector('.chart-cursor');
     const { values, t0, hop } = series;
+    // The cursor is a positioned element rather than a canvas redraw: moving a
+    // div costs nothing, whereas repainting the chart on every mousemove would
+    // redraw tens of thousands of points.
+    const hideAll = () => { tip.hidden = true; if (cursor) cursor.hidden = true; };
     canvas.onmousemove = (e) => {
-      if (values.length < 2) return;
+      if (values.length < 2) return hideAll();
       const r = canvas.getBoundingClientRect();
       const x = e.clientX - r.left;
       // Invert the time mapping, then land on this series' nearest sample.
       const t = ((x - map.padL) / map.plotW) * opts.durationSec;
       const i = Math.round((t - t0) / hop);
-      if (i < 0 || i >= values.length) { tip.hidden = true; return; }
-      tip.textContent = `${formatClock(t0 + i * hop)} · ${values[i].toFixed(1)} ${opts.unit}`;
-      tip.style.left = map.xAt(i) + 'px';
+      if (i < 0 || i >= values.length) return hideAll();
+      const px = map.xAt(i);
+      tip.textContent = `${formatClock(t0 + i * hop)} · ${values[i].toFixed(1).replace('-', '−')} ${opts.unit}`;
+      tip.style.left = px + 'px';
       tip.style.top = map.yAt(values[i]) + 'px';
       tip.hidden = false;
+      if (cursor) {
+        cursor.style.left = px + 'px';
+        cursor.style.top = map.padT + 'px';
+        cursor.style.height = map.plotH + 'px';
+        cursor.hidden = false;
+      }
     };
-    canvas.onmouseleave = () => { tip.hidden = true; };
+    canvas.onmouseleave = hideAll;
   }
 
   // ---- export ----
