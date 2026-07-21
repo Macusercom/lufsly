@@ -185,6 +185,7 @@ function sniffFormat(data) {
       ISFT: 'encoder', IGNR: 'genre', ICMT: 'comment',
     };
     let codec = 'WAV';
+    let bitrate = null;
     let o = 12;
     while (o + 8 <= b.length) {
       const size = dv.getUint32(o + 4, true);
@@ -195,6 +196,10 @@ function sniffFormat(data) {
         if (fmt === 0xfffe && o + 34 <= b.length) fmt = dv.getUint16(o + 32, true);
         const name = WAVE_FORMATS[fmt] ?? `format ${fmt}`;
         codec = `WAV (${name}${bits ? ` ${bits}-bit` : ''})`;
+        // Uncompressed: the rate is exact arithmetic, no measuring needed.
+        const rate = dv.getUint32(o + 12, true);
+        const ch = dv.getUint16(o + 10, true);
+        if (rate && ch && bits) bitrate = { kbps: Math.round(rate * ch * bits / 1000), exact: true };
       } else if (tag(o, 'LIST') && tag(o + 8, 'INFO')) {
         let p = o + 12;
         const end = Math.min(b.length, o + 8 + size);
@@ -207,7 +212,7 @@ function sniffFormat(data) {
       }
       o += 8 + size + (size & 1);
     }
-    return { codec, meta };
+    return { codec, meta, bitrate };
   }
 
   // ---- FLAC ----
@@ -302,6 +307,7 @@ function sniffFormat(data) {
 
   const LAYERS = { 1: 'Layer III', 2: 'Layer II', 3: 'Layer I' };
   const VERSIONS = { 3: 'MPEG-1', 2: 'MPEG-2', 0: 'MPEG-2.5' };
+  const RATES = { 3: [44100, 48000, 32000], 2: [22050, 24000, 16000], 0: [11025, 12000, 8000] };
   const BITRATES_V1_L3 = [0, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320];
   const BITRATES_V2_L3 = [0, 8, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 144, 160];
   for (let i = o; i < Math.min(b.length - 4, o + 65536); i++) {
@@ -309,12 +315,40 @@ function sniffFormat(data) {
     const version = (b[i + 1] >> 3) & 0x03;
     const layer = (b[i + 1] >> 1) & 0x03;
     const brIdx = b[i + 2] >> 4;
-    if (layer === 0 || !VERSIONS[version]) continue;
-    const table = version === 3 ? BITRATES_V1_L3 : BITRATES_V2_L3;
-    const kbps = layer === 1 && brIdx > 0 && brIdx < 15 ? table[brIdx] : 0;
-    const detail = [VERSIONS[version], LAYERS[layer], kbps ? `${kbps} kbps` : null]
-      .filter(Boolean).join(', ');
-    return { codec: `MP3 (${detail})`, meta };
+    const srIdx = (b[i + 2] >> 2) & 0x03;
+    if (layer === 0 || !VERSIONS[version] || srIdx === 3) continue;
+    const sampleRate = RATES[version][srIdx];
+    let bitrate = null;
+
+    // A Xing/Info header records the exact frame and byte counts of the audio
+    // itself. That yields the true average excluding ID3 tags — the number a
+    // measurement from file size can only approximate. "Xing" means VBR,
+    // "Info" means CBR.
+    const xing = find('Xing', i, i + 200);
+    const info = xing < 0 ? find('Info', i, i + 200) : -1;
+    const hdr = xing >= 0 ? xing : info;
+    if (xing >= 0) meta.vbr = true;
+    if (hdr > 0 && hdr + 16 <= b.length) {
+      const flags = dv.getUint32(hdr + 4, false);
+      let p = hdr + 8;
+      const frames = (flags & 1) ? dv.getUint32(p, false) : 0;
+      if (flags & 1) p += 4;
+      const bytes = (flags & 2) ? dv.getUint32(p, false) : 0;
+      const spf = version === 3 ? 1152 : 576;   // samples per Layer III frame
+      if (frames > 0 && bytes > 0) {
+        const seconds = (frames * spf) / sampleRate;
+        if (seconds > 0) bitrate = { kbps: Math.round((bytes * 8) / seconds / 1000), exact: true };
+      }
+    }
+    // No Xing/Info: constant bitrate, so the frame header states it outright.
+    if (!bitrate && !meta.vbr) {
+      const table = version === 3 ? BITRATES_V1_L3 : BITRATES_V2_L3;
+      const kbps = layer === 1 && brIdx > 0 && brIdx < 15 ? table[brIdx] : 0;
+      if (kbps) bitrate = { kbps, exact: true };
+    }
+
+    const detail = [VERSIONS[version], LAYERS[layer]].filter(Boolean).join(', ');
+    return { codec: `MP3 (${detail})`, meta, bitrate };
   }
   return { codec: null, meta };
 }
@@ -368,11 +402,25 @@ export async function analyzeFile(file, onProgress) {
   stats.momentaryMax = maxPowerToLufs(analyzer.blockPowers);
   stats.shortTermMax = maxValue(analyzer.shortTermLoudness);
 
+  // Prefer what the container states exactly — WAV arithmetic, or an MP3's
+  // Xing/Info frame and byte counts. Only when nothing is declared (FLAC, Opus,
+  // Vorbis, AAC) fall back to measuring size ÷ duration, which is an average
+  // and counts container and tag overhead, so it is marked "avg" rather than
+  // passed off as the nominal rate.
+  let bitrate = null;
+  if (format.bitrate?.kbps) {
+    bitrate = `${format.bitrate.kbps} kbps${format.meta.vbr ? ' VBR' : ''}`;
+  } else if (stats.durationSec > 0) {
+    const kbps = Math.round((file.size * 8) / stats.durationSec / 1000);
+    if (kbps) bitrate = `~${kbps} kbps avg`;
+  }
+
   return {
     bufferInfo: {
       sampleRate: buffer.sampleRate,
       numberOfChannels: buffer.numberOfChannels,
       codec: format.codec,
+      bitrate,
     },
     // What the file says about itself, plus the one fact only the File object
     // knows. Shown in the collapsed metadata panel, not the metrics table.
@@ -459,7 +507,7 @@ export function initReport({ fmt, drBand, peakClass, loudnessVerdict, getPreset,
       [msg('duration'), formatTime(s.durationSec), '', null],
       [msg('sampleRate'), bufferInfo.sampleRate + ' Hz', '', null],
       [msg('channels'), String(bufferInfo.numberOfChannels), '', null],
-      [msg('codec'), bufferInfo.codec || '–', '', 'infoCodec'],
+      [msg('codec'), [bufferInfo.codec, bufferInfo.bitrate].filter(Boolean).join(' / ') || '–', '', 'infoCodec'],
     ];
     return { fileName, preset, targetLabel: getTargetLabel(), verdicts, rows };
   }

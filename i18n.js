@@ -80,7 +80,7 @@ const EN = {
   infoPlr: 'Peak minus integrated loudness – shows how much dynamic headroom is left / how compressed the audio is.',
   infoMomentaryMax: 'The loudest 400 ms anywhere in the file. Reveals brief loudness spikes that the integrated value averages away.',
   infoShortTermMax: 'The loudest 3-second stretch anywhere in the file – a good check for passages that jump well above your target.',
-  infoCodec: 'The audio format read from the file itself, not from its extension. Lossy formats were already re-encoded once, so a peak above the limit may come from the encoder rather than the mix.',
+  infoCodec: 'The audio format read from the file itself, not from its extension. The bitrate is exact where the file states it (WAV, MP3); \u201cavg\u201d means it was measured as size \u00f7 duration and includes tag and container overhead.',
 
   // ---- verdicts ----
   tooQuiet: 'Too quiet ($DIFF$ LU below target)',
@@ -209,7 +209,7 @@ const DE = {
   infoPlr: 'Peak minus integrierte Lautheit – zeigt, wie viel Dynamik-Reserve bleibt bzw. wie stark komprimiert wurde.',
   infoMomentaryMax: 'Die lautesten 400 ms der gesamten Datei. Zeigt kurze Lautheitsspitzen, die im integrierten Wert untergehen.',
   infoShortTermMax: 'Die lautesten 3 Sekunden der gesamten Datei – gut geeignet, um Passagen zu finden, die deutlich über dem Ziel liegen.',
-  infoCodec: 'Das Audioformat, gelesen aus der Datei selbst, nicht aus der Dateiendung. Verlustbehaftete Formate wurden bereits einmal neu kodiert – ein Peak über dem Limit kann daher vom Encoder statt vom Mix stammen.',
+  infoCodec: 'Das Audioformat, gelesen aus der Datei selbst, nicht aus der Dateiendung. Die Bitrate ist exakt, wenn die Datei sie angibt (WAV, MP3); \u201eavg\u201c bedeutet, sie wurde als Größe ÷ Dauer gemessen und enthält Tag- und Container-Overhead.',
 
   tooQuiet: 'Zu leise ($DIFF$ LU unter dem Ziel)',
   justRight: 'Genau richtig für das Ziel',
