@@ -169,9 +169,14 @@ export function linearToDb(v) {
 // Streaming loudness analyzer. Feed arbitrary-length chunks of raw
 // (unweighted) channel data via process(); read metrics via getStats().
 export class LoudnessAnalyzer {
-  constructor(sampleRate, nChannels) {
+  // keepHistory: accumulate the per-hop series used to plot a finished file.
+  // A live meter runs for the length of a session and only reads getStats(),
+  // so it passes false and never grows arrays nobody looks at. The gated
+  // shortTermLoudness is kept either way — LRA is derived from it.
+  constructor(sampleRate, nChannels, { keepHistory = true } = {}) {
     this.sampleRate = sampleRate;
     this.nChannels = nChannels;
+    this.keepHistory = keepHistory;
     // L/R/C weight 1.0; surround channels (index 3+ after LFE skip) 1.41.
     // For typical browser audio (mono/stereo) all weights are 1.
     this.weights = [];
@@ -248,7 +253,9 @@ export class LoudnessAnalyzer {
   }
 
   _finishSubblock() {
-    this.truePeakHistory.push(Math.max(linearToDb(this.subTruePeak), TP_FLOOR_DBTP));
+    if (this.keepHistory) {
+      this.truePeakHistory.push(Math.max(linearToDb(this.subTruePeak), TP_FLOOR_DBTP));
+    }
     this.subTruePeak = 0;
     this.subblocks.push(this.subSum / this.subLen);
     this.subSum = 0;
@@ -279,7 +286,7 @@ export class LoudnessAnalyzer {
       for (let k = 0; k < nb; k++) p += this.subblocks[k];
       p /= nb;
       this.shortTerm = powerToLufs(p);
-      this.shortTermHistory.push(Math.max(this.shortTerm, ABS_GATE_LUFS));
+      if (this.keepHistory) this.shortTermHistory.push(Math.max(this.shortTerm, ABS_GATE_LUFS));
       if (this.shortTerm >= ABS_GATE_LUFS) {
         this.shortTermLoudness.push(this.shortTerm);
       }
