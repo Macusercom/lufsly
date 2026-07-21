@@ -470,8 +470,12 @@ export function initReport({ fmt, drBand, peakClass, loudnessVerdict, getPreset,
 
   // Re-render from stored stats — used when a target changes or the language
   // is switched. No re-analysis needed.
+  //
+  // Re-renders the original entry, not `current`: `current` is a derived view
+  // that carries no `meta` and is replaced on every render, so feeding it back
+  // in would blank the metadata panel and defeat the cached DR series.
   function refresh() {
-    if (current) render(current, false);
+    if (current) render(current.entry, false);
   }
 
   function hide() {

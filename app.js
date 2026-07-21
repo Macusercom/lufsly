@@ -272,6 +272,20 @@ $('btn-clear-queue').addEventListener('click', () => {
 
 // ---------- analysis ----------
 
+// The status line has to stay readable: a long name with no spaces cannot wrap
+// and would run off the page, and even one that can wrap pushes the percentage
+// out of sight. Shorten the middle and keep the extension, which is the part
+// that distinguishes "…master.wav" from "…master.mp3".
+function shortName(name, max = 44) {
+  if (name.length <= max) return name;
+  const dot = name.lastIndexOf('.');
+  const ext = dot > 0 && name.length - dot <= 6 ? name.slice(dot) : '';
+  const stem = ext ? name.slice(0, dot) : name;
+  const keep = Math.max(4, max - ext.length - 1);
+  return stem.slice(0, Math.ceil(keep * 0.6))
+    + '…' + stem.slice(stem.length - Math.floor(keep * 0.4)) + ext;
+}
+
 function setProgress(text, fraction) {
   const box = $('analyze-progress');
   box.hidden = false;
@@ -313,10 +327,10 @@ async function drainPending() {
 
   while (pending.length) {
     const file = pending.shift();
-    setProgress(progressText('decoding', [file.name]), 0);
+    setProgress(progressText('decoding', [shortName(file.name)]), 0);
     try {
       const result = await analyzeFile(file, (frac) => {
-        setProgress(progressText('analyzing', [file.name, String(Math.round(frac * 100))]), frac);
+        setProgress(progressText('analyzing', [shortName(file.name), String(Math.round(frac * 100))]), frac);
       });
       const entry = { id: nextId++, fileName: file.name, ...result };
       queue.push(entry);
@@ -326,7 +340,7 @@ async function drainPending() {
     } catch {
       // Unsupported codec or corrupt file: report it and keep going so one
       // bad file does not abort the rest of the batch.
-      setError(`${file.name}: ${msg('decodeError')}`);
+      setError(`${shortName(file.name)}: ${msg('decodeError')}`);
       await new Promise((r) => setTimeout(r, 1200));
     }
   }

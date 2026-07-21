@@ -163,6 +163,9 @@ main {
   color: var(--ink-2);
   font-variant-numeric: tabular-nums;
   text-align: center;
+  /* Names are shortened before they get here, but a single unbroken word still
+     has to break rather than push the page sideways. */
+  overflow-wrap: anywhere;
 }
 #analyze-progress.error { color: var(--critical); }
 .progress-bar {
