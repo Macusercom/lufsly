@@ -24,7 +24,7 @@ const EN = {
 
   // ---- targets ----
   targetsTitle: 'Targets',
-  targetsHint: 'Your targets are saved in this browser and applied to every analysis. Changing them re-scores results instantly — no need to analyze again.',
+  targetsHint: 'Your targets are saved in this browser and applied to every analysis. Changing them re-scores results instantly.',
   presetLabel: 'Target',
   presetPodcast: 'Podcast (−16 LUFS)',
   presetStreaming: 'Streaming (−14 LUFS)',
@@ -115,6 +115,7 @@ const EN = {
   footerExtension: 'Chrome extension',
   footerPrivacy: 'Privacy Policy',
   footerImprint: 'Imprint',
+  footerCopyright: '© 2026 Macusercom',
   backToApp: '← Back to the app',
   backToLUFSly: '← Back to LUFSly',
   imprintTitle: 'Legal Notice',
@@ -139,7 +140,7 @@ const DE = {
   decodeError: 'Diese Datei konnte nicht dekodiert werden.',
 
   targetsTitle: 'Ziele',
-  targetsHint: 'Deine Ziele werden in diesem Browser gespeichert und auf jede Analyse angewendet. Änderungen werden sofort neu bewertet — ohne erneute Analyse.',
+  targetsHint: 'Deine Ziele werden in diesem Browser gespeichert und auf jede Analyse angewendet. Änderungen werden sofort neu bewertet.',
   presetLabel: 'Ziel',
   presetPodcast: 'Podcast (−16 LUFS)',
   presetStreaming: 'Streaming (−14 LUFS)',
@@ -223,6 +224,7 @@ const DE = {
   footerSource: 'Quellcode',
   footerExtension: 'Chrome-Erweiterung',
   footerPrivacy: 'Datenschutz',
+  footerCopyright: '© 2026 Macusercom',
   footerImprint: 'Impressum',
   backToApp: '← Zurück zur App',
   backToLUFSly: '← Zurück zu LUFSly',

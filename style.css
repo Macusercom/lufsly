@@ -89,9 +89,11 @@ button:disabled { opacity: 0.5; cursor: default; }
 }
 .hero .tagline {
   margin: 8px auto 0;
-  max-width: 560px;
+  /* Wide enough that the German string — the longer of the two — stays on
+     one line instead of wrapping to a lone orphan word. */
+  max-width: 640px;
   color: var(--ink-2);
-  font-size: 16px;
+  font-size: 15px;
 }
 .hero .privacy-note {
   margin: 10px 0 0;
@@ -368,6 +370,7 @@ footer {
 .footer-links { margin: 8px 0 0; }
 .footer-links a { color: var(--ink-2); text-decoration: none; }
 .footer-links a:hover { color: var(--accent); text-decoration: underline; }
+.footer-copyright { margin: 10px 0 0; }
 
 /* ---------- narrow screens ---------- */
 
