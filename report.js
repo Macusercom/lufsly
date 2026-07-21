@@ -848,19 +848,18 @@ export function initReport({ fmt, drBand, peakClass, loudnessVerdict, getPreset,
           ctx.restore();
         }
 
-        // The range gets a lighter weight than the peak contour: at full
-        // opacity the spans dominate and the chart reads as a solid block,
-        // which is what hiding the minimum was meant to avoid.
+        // The lower bound gets its own contour rather than a filled span per
+        // column. A vertical span per pixel column tiles with its neighbours
+        // into a solid wash — that is a fill however faint it is drawn — while
+        // two traces keep the background visible between them and still show
+        // the dips: the lower line rises whenever the quiet moments stop.
         ctx.save();
-        ctx.globalAlpha = 0.28;
+        ctx.globalAlpha = 0.5;
         ctx.strokeStyle = color;
         ctx.beginPath();
         for (let k = i; k <= j; k++) {
-          const p = points[k];
-          const yHi = yAt(p.hi), yLo = yAt(p.lo);
-          if (yLo - yHi < 0.5) continue;   // nothing to span
-          ctx.moveTo(p.x, yHi);
-          ctx.lineTo(p.x, yLo);
+          const y = yAt(points[k].lo);
+          k === i ? ctx.moveTo(points[k].x, y) : ctx.lineTo(points[k].x, y);
         }
         ctx.stroke();
         ctx.restore();

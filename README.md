@@ -12,7 +12,9 @@ A privacy-first web app that measures the loudness (LUFS), True Peak and dynamic
 - True Peak in dBTP with 4× oversampling, so inter-sample peaks are caught
 - Dynamic range as LRA (EBU Tech 3342), plus PLR (Peak-to-Loudness Ratio)
 - Traffic-light verdicts — too quiet / just right / too loud, how much dynamics, and whether it clipped
-- Short-term loudness graph over the whole file, with your target drawn in
+- Three charts per report on a shared time axis: Short-term loudness with your target drawn in, True Peak with a marker at every overshoot and the times listed, and dynamic range (rolling LRA)
+- Hovering any chart reads all three at that instant, with a synced crosshair
+- Codec and bitrate read from the file itself, plus a collapsible panel with its title, artist, date and encoder
 - Export any report as PNG or PDF, or copy it as text
 - Loudness targets: Podcast (−16 LUFS), Streaming (−14 LUFS), Broadcast EBU R128 (−23 LUFS), None, or your own value
 - Your own dynamic range target, tolerance and True Peak limit
@@ -21,6 +23,7 @@ A privacy-first web app that measures the loudness (LUFS), True Peak and dynamic
 - Compare a batch at a glance: every file listed with its key values, colour-coded against your targets
 - Info icons (ⓘ) next to every value explaining what it means
 - German and English UI, follows your browser language
+- Files are decoded at their own sample rate, so nothing is resampled before it is measured
 - No audio or data ever leaves your machine
 
 Measurement follows ITU-R BS.1770-4 / EBU R128 (K-weighting, two-stage gating) using the same DSP core as the [LUFSly Chrome extension](https://github.com/Macusercom/lufsly-extension), so results match between the two.
@@ -73,7 +76,7 @@ No data ever leaves your device. Built as a vibe coding project with [Claude](ht
     </td>
     <td width="33%" align="center">
       <img src="images/image2.png" alt="Analyzed files and report" width="100%"><br>
-      <sub><b>Analysis</b> — batch list and full report</sub>
+      <sub><b>Analysis</b> — batch list, metrics and the three charts</sub>
     </td>
     <td width="33%" align="center">
       <img src="images/image3.png" alt="Exported report" width="100%"><br>
