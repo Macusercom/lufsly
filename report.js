@@ -762,7 +762,21 @@ export function initReport({ fmt, drBand, peakClass, loudnessVerdict, getPreset,
   //            a magnitude that is not there, and it buries the range band.
   function drawChartInto(ctx, rect, series, opts) {
     const { values, t0, hop } = series;
-    const { yMin, yMax, step, ticks, durationSec, target, limit, unit, bandOf, fill = true } = opts;
+    const { yMax, step, ticks, durationSec, target, limit, unit, bandOf, fill = true } = opts;
+
+    // The −40 floor is the useful default and keeps files comparable, but a
+    // quiet recording would clamp flat onto it and look identical to silence.
+    // Drop the floor only when nothing reaches it, keeping a ~20 dB window
+    // around the content so the shape is visible; the changed axis labels are
+    // the signal that this is not the usual scale.
+    let yMin = opts.yMin;
+    if (!ticks && values.length) {
+      let dataMax = -Infinity;
+      for (const v of values) if (isFinite(v) && v > dataMax) dataMax = v;
+      if (isFinite(dataMax) && dataMax < yMin + 3) {
+        yMin = Math.max(-100, Math.floor((dataMax - 20) / 10) * 10);
+      }
+    }
     ctx.save();
     ctx.fillStyle = col('--page');
     ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
@@ -838,7 +852,7 @@ export function initReport({ fmt, drBand, peakClass, loudnessVerdict, getPreset,
         // opacity the spans dominate and the chart reads as a solid block,
         // which is what hiding the minimum was meant to avoid.
         ctx.save();
-        ctx.globalAlpha = 0.45;
+        ctx.globalAlpha = 0.28;
         ctx.strokeStyle = color;
         ctx.beginPath();
         for (let k = i; k <= j; k++) {
