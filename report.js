@@ -3,11 +3,65 @@
 // PDF writer are unchanged, only the chrome.* APIs and the single-file
 // assumption were removed.
 
-import { LoudnessAnalyzer, powerToLufs } from './dsp/loudness-core.js';
+import { LoudnessAnalyzer, powerToLufs, lufsToPower, ABS_GATE_LUFS } from './dsp/loudness-core.js';
 import { msg } from './i18n.js';
 
 const HOP_SEC = 0.1;          // one short-term history point per 100 ms
 const SHORTTERM_OFFSET = 30;  // short-term values only begin after 3 s
+
+// Rolling loudness range. LRA proper (EBU Tech 3342) describes a whole
+// programme; sliding a window over it shows how the range moves instead.
+const DR_WINDOW_HOPS = 300;   // 30 s of short-term values per window
+const DR_STEP_HOPS = 5;       // evaluate every 0.5 s — a 21 k-hop file would
+                              // otherwise sort a 300-value window 21 k times
+                              // for a chart only ~600 px wide
+const DR_MIN_HOPS = 100;      // emit once 10 s is available, so short files
+                              // still get a curve rather than nothing
+
+// Same gating and percentiles as LoudnessAnalyzer._lra, applied to one window.
+// Kept identical on purpose: this is the time-resolved view of the LRA figure
+// in the table, so the two must agree.
+export function lraOf(values) {
+  if (values.length < 2) return null;
+  let energy = 0;
+  for (const l of values) energy += lufsToPower(l);
+  const relGate = powerToLufs(energy / values.length) - 20;
+  const gated = values.filter((l) => l >= relGate);
+  if (gated.length < 2) return null;
+  gated.sort((a, b) => a - b);
+  const perc = (q) => {
+    const idx = q * (gated.length - 1);
+    const lo = Math.floor(idx), hi = Math.ceil(idx);
+    return gated[lo] + (gated[hi] - gated[lo]) * (idx - lo);
+  };
+  return perc(0.95) - perc(0.1);
+}
+
+// history is shortTermHistory, which floors silence at ABS_GATE_LUFS; _lra
+// reads shortTermLoudness, which simply omits those. Filter to match.
+// windowHops = Infinity measures the whole file, which must reproduce stats.lra.
+export function rollingLra(history, windowHops = DR_WINDOW_HOPS, stepHops = DR_STEP_HOPS) {
+  const values = [];
+  const firstEnd = Math.min(DR_MIN_HOPS, history.length);
+  const at = (end) => {
+    const start = Math.max(0, end - windowHops);
+    const win = [];
+    for (let i = start; i < end; i++) {
+      if (history[i] >= ABS_GATE_LUFS) win.push(history[i]);
+    }
+    return lraOf(win) ?? 0;
+  };
+  // Strictly on the step grid: the series is positioned as t0 + i * hop, so an
+  // off-grid tail point would be drawn at the wrong time. The curve therefore
+  // ends up to one step (0.5 s) short of the file, which is sub-pixel.
+  for (let end = firstEnd; end <= history.length; end += stepHops) values.push(at(end));
+  return {
+    values,
+    // Each point describes the window ending at its own timestamp.
+    t0: SHORTTERM_OFFSET * HOP_SEC + (firstEnd - 1) * HOP_SEC,
+    hop: stepHops * HOP_SEC,
+  };
+}
 
 const $ = (id) => document.getElementById(id);
 
@@ -218,10 +272,27 @@ export function initReport({ fmt, drBand, peakClass, loudnessVerdict, getPreset,
     current = null;
   }
 
+  // LRA does not depend on the target, so the series survives a target or
+  // language change untouched — only its band colours are re-derived. Keeps
+  // "changing a target re-scores instantly, no re-analysis" true.
+  function drSeries(entry) {
+    entry.dr ??= rollingLra(entry.history);
+    return entry.dr;
+  }
+
+  function drChartOpts(preset, durationSec) {
+    const dr = preset.dr;
+    return {
+      yMin: 0, yMax: dr.scaleMax, ticks: [...dr.ticks].reverse(),
+      durationSec, unit: 'LU',
+      bandOf: (v) => clsColor(drBand(v, preset).cls),
+    };
+  }
+
   function render(entry, scroll) {
     const { fileName, bufferInfo, stats: s, history, peaks = [] } = entry;
     const model = buildModel(fileName, bufferInfo, s);
-    current = { fileName, bufferInfo, stats: s, history, peaks, model };
+    current = { fileName, bufferInfo, stats: s, history, peaks, model, entry };
     $('report-file').textContent = fileName;
 
     const verdictsEl = $('report-verdicts');
@@ -276,6 +347,8 @@ export function initReport({ fmt, drBand, peakClass, loudnessVerdict, getPreset,
       { values: peaks, t0: PEAK_T0, hop: HOP_SEC },
       { yMin: -40, yMax: 3, step: 10, durationSec: s.durationSec, unit: 'dBTP',
         limit: tpLimit });
+    drawChartOnScreen('dr-chart', 'dr-tip', drSeries(entry),
+      drChartOpts(model.preset, s.durationSec));
 
     const clipEl = $('clip-times');
     clipEl.textContent = clipSummary(peaks, tpLimit);
@@ -352,12 +425,15 @@ export function initReport({ fmt, drBand, peakClass, loudnessVerdict, getPreset,
   }
 
   // series: { values, t0, hop }
-  // opts: { yMin, yMax, step, durationSec, unit, target, limit }
+  // opts: { yMin, yMax, step | ticks, durationSec, unit, target, limit, bandOf }
+  //   step   — even grid spacing; ticks — explicit gridlines, for the DR scale
+  //            whose max depends on the preset (8 speech / 24 music / custom).
   //   target — the loudness goal: amber reference line, no markers.
   //   limit  — the peak ceiling: red line, plus a dot on every hop above it.
+  //   bandOf — colours the curve per point, echoing the DR bar's bands.
   function drawChartInto(ctx, rect, series, opts) {
     const { values, t0, hop } = series;
-    const { yMin, yMax, step, durationSec, target, limit, unit } = opts;
+    const { yMin, yMax, step, ticks, durationSec, target, limit, unit, bandOf } = opts;
     ctx.save();
     ctx.fillStyle = col('--page');
     ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
@@ -377,7 +453,12 @@ export function initReport({ fmt, drBand, peakClass, loudnessVerdict, getPreset,
     ctx.lineWidth = 1;
     // Anchored on 0 rather than yMax, so headroom above 0 dBTP stays unlabelled
     // instead of yielding a 3 / −7 / −17 ladder.
-    for (let v = Math.floor(yMax / step) * step; v >= yMin; v -= step) {
+    const gridLines = ticks ?? (() => {
+      const out = [];
+      for (let v = Math.floor(yMax / step) * step; v >= yMin; v -= step) out.push(v);
+      return out;
+    })();
+    for (const v of gridLines) {
       const y = yAt(v);
       ctx.beginPath();
       ctx.moveTo(rect.x + padL, y);
@@ -390,15 +471,35 @@ export function initReport({ fmt, drBand, peakClass, loudnessVerdict, getPreset,
 
     if (values.length >= 2) {
       // series first, thin, so the limit line stays legible on top
-      ctx.strokeStyle = col('--accent');
       ctx.lineWidth = 1.5;
       ctx.lineJoin = 'round';
-      ctx.beginPath();
-      for (let i = 0; i < values.length; i++) {
-        const x = xAt(i), y = yAt(values[i]);
-        i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+      if (bandOf) {
+        // Stroked in runs of one colour: a per-segment stroke would cost a path
+        // per point, and the band only changes a handful of times.
+        let i = 0;
+        while (i < values.length - 1) {
+          const color = bandOf(values[i]);
+          ctx.strokeStyle = color;
+          ctx.beginPath();
+          ctx.moveTo(xAt(i), yAt(values[i]));
+          let j = i + 1;
+          ctx.lineTo(xAt(j), yAt(values[j]));
+          while (j < values.length - 1 && bandOf(values[j]) === color) {
+            j++;
+            ctx.lineTo(xAt(j), yAt(values[j]));
+          }
+          ctx.stroke();
+          i = j;
+        }
+      } else {
+        ctx.strokeStyle = col('--accent');
+        ctx.beginPath();
+        for (let i = 0; i < values.length; i++) {
+          const x = xAt(i), y = yAt(values[i]);
+          i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+        }
+        ctx.stroke();
       }
-      ctx.stroke();
     } else {
       // Files under ~3 s never produce a short-term value.
       ctx.fillStyle = col('--muted');
@@ -533,7 +634,7 @@ export function initReport({ fmt, drBand, peakClass, loudnessVerdict, getPreset,
   // Compose the whole report into an offscreen canvas (2× for crisp output).
   function renderReportImage() {
     if (!current) return null;
-    const { model, history, peaks = [], stats } = current;
+    const { model, history, peaks = [], stats, entry } = current;
     const durationSec = stats.durationSec;
     const target = model.preset.target;
     const tpLimit = model.preset.tpLimit ?? -1;
@@ -548,7 +649,7 @@ export function initReport({ fmt, drBand, peakClass, loudnessVerdict, getPreset,
     const chartH = 190;
     const clipH = clipLine ? 18 : 0;
     const footerH = 30;
-    const H = P + headerH + verdictH + tableH + 26 + chartH * 2 + clipH + footerH;
+    const H = P + headerH + verdictH + tableH + 26 + chartH * 3 + clipH + footerH;
 
     const canvas = document.createElement('canvas');
     canvas.width = W * scale;
@@ -630,6 +731,15 @@ export function initReport({ fmt, drBand, peakClass, loudnessVerdict, getPreset,
       ctx.font = '12px system-ui, sans-serif';
       ctx.fillText(truncate(ctx, clipLine, W - 2 * P), P, y + 14);
     }
+    y += clipH + 22;
+
+    ctx.textAlign = 'left';
+    ctx.fillStyle = col('--muted');
+    ctx.font = '12px system-ui, sans-serif';
+    ctx.fillText(msg('drHistory'), P, y);
+    y += 8;
+    drawChartInto(ctx, { x: P, y, w: W - 2 * P, h: chartH - 20 },
+      drSeries(entry), drChartOpts(model.preset, durationSec));
 
     return canvas;
   }

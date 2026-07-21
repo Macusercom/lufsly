@@ -15,7 +15,7 @@ export function powerToLufs(power) {
   return power > 0 ? -0.691 + 10 * Math.log10(power) : -Infinity;
 }
 
-function lufsToPower(lufs) {
+export function lufsToPower(lufs) {
   return Math.pow(10, (lufs + 0.691) / 10);
 }
 
