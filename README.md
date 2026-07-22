@@ -1,4 +1,4 @@
-<img src="icons/icon128.png" alt="LUFSly icon" height="100">
+<img src="docs/icons/icon128.png" alt="LUFSly icon" height="100">
 
 # LUFSly – Loudness Meter (Web)
 A privacy-first web app that measures the loudness (LUFS), True Peak and dynamic range of your audio files. Drop in a file — or a whole batch — and get a full EBU R128 report with a loudness graph you can copy, or save as PNG or PDF. Everything runs locally in your browser: no upload, no account, no tracking.
