@@ -760,6 +760,8 @@ export function initReport({ fmt, drBand, peakClass, loudnessVerdict, getPreset,
     const { step, ticks, durationSec, target, limit, unit, bandOf, ppx, lineWidth = 1.5 } = opts;
     let yMin = opts.yMin;
     let yMax = opts.yMax;
+    // Uniform spacing of a fixed-tick scale (DR), used to extend it if needed.
+    const tickStep = ticks && ticks.length >= 2 ? Math.abs(ticks[0] - ticks[1]) : (step || 2);
 
     ctx.save();
     ctx.fillStyle = col('--page');
@@ -780,23 +782,29 @@ export function initReport({ fmt, drBand, peakClass, loudnessVerdict, getPreset,
     const points = values.length >= 2 ? decimate(values, xAt, rect.x + padL, plotW, ppx) : [];
 
     // The default range keeps files comparable, but data outside it must still
-    // be shown rather than clamped flat onto an edge. Fixed-tick charts (DR)
-    // keep their scale; the others extend to fit.
-    if (!ticks && points.length) {
+    // be shown rather than clamped flat onto an edge, so extend to fit.
+    if (points.length) {
       let lo = Infinity, hi = -Infinity;
       for (const pt of points) { if (pt.v < lo) lo = pt.v; if (pt.v > hi) hi = pt.v; }
       if (target != null) { lo = Math.min(lo, target); hi = Math.max(hi, target); }
       if (limit != null) { lo = Math.min(lo, limit); hi = Math.max(hi, limit); }
-      if (isFinite(hi) && hi < yMin + 3) {
-        // Everything sits below the floor (a quiet recording): window around it
-        // rather than pinning it to the bottom edge.
-        yMin = Math.max(-120, Math.floor((hi - 20) / 10) * 10);
-      } else if (isFinite(lo)) {
-        // Extend the floor down to include dips below the default.
-        yMin = Math.min(yMin, Math.max(-120, Math.floor(lo / 10) * 10));
+      if (ticks) {
+        // Fixed-scale chart (DR): keep the 0 floor and the band step, but raise
+        // the ceiling to fit a wide passage rather than clamping it flat. Bands
+        // still colour correctly above the nominal top (the last band is open).
+        if (isFinite(hi) && hi > yMax) yMax = Math.ceil(hi / tickStep) * tickStep;
+      } else {
+        if (isFinite(hi) && hi < yMin + 3) {
+          // Everything sits below the floor (a quiet recording): window around
+          // it rather than pinning it to the bottom edge.
+          yMin = Math.max(-120, Math.floor((hi - 20) / 10) * 10);
+        } else if (isFinite(lo)) {
+          // Extend the floor down to include dips below the default.
+          yMin = Math.min(yMin, Math.max(-120, Math.floor(lo / 10) * 10));
+        }
+        // And extend the ceiling up for peaks above it (true peak can exceed 0).
+        if (isFinite(hi)) yMax = Math.max(yMax, Math.ceil(hi / 10) * 10);
       }
-      // And extend the ceiling up for peaks above it (true peak can exceed 0).
-      if (isFinite(hi)) yMax = Math.max(yMax, Math.ceil(hi / 10) * 10);
     }
 
     const yAt = (v) => rect.y + padT + (1 - (Math.max(yMin, Math.min(yMax, v)) - yMin) / (yMax - yMin)) * plotH;
@@ -808,9 +816,13 @@ export function initReport({ fmt, drBand, peakClass, loudnessVerdict, getPreset,
     ctx.lineWidth = 1;
     // Anchored on 0 rather than yMax, so headroom above 0 dBTP stays unlabelled
     // instead of yielding a 3 / −7 / −17 ladder.
-    const gridLines = ticks ?? (() => {
+    // Fixed-tick charts regenerate their ladder from the band step so an
+    // extended ceiling still gets labelled gridlines; others anchor on 0.
+    const gridLines = (() => {
       const out = [];
-      for (let v = Math.floor(yMax / step) * step; v >= yMin; v -= step) out.push(v);
+      const gs = ticks ? tickStep : step;
+      const top = ticks ? yMax : Math.floor(yMax / gs) * gs;
+      for (let v = top; v >= yMin - 1e-9; v -= gs) out.push(v);
       return out;
     })();
     for (const v of gridLines) {
