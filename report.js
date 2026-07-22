@@ -645,7 +645,7 @@ export function initReport({ fmt, drBand, peakClass, loudnessVerdict, getPreset,
     drawChartOnScreen('peak-chart', 'peak-tip',
       { values: peaks, t0: PEAK_T0, hop: HOP_SEC },
       { yMin: -40, yMax: 3, step: 10, durationSec: s.durationSec, unit: 'dBTP',
-        limit: tpLimit, ppx: 4 });
+        limit: tpLimit, ppx: 4, lineWidth: 1 });
     drawChartOnScreen('dr-chart', 'dr-tip', drSeries(entry),
       drChartOpts(model.preset, s.durationSec));
 
@@ -757,7 +757,7 @@ export function initReport({ fmt, drBand, peakClass, loudnessVerdict, getPreset,
   //   bandOf — colours the curve per point, echoing the DR bar's bands.
   function drawChartInto(ctx, rect, series, opts) {
     const { values, t0, hop } = series;
-    const { yMax, step, ticks, durationSec, target, limit, unit, bandOf, ppx } = opts;
+    const { yMax, step, ticks, durationSec, target, limit, unit, bandOf, ppx, lineWidth = 1.5 } = opts;
 
     // The −40 floor is the useful default and keeps files comparable, but a
     // quiet recording would clamp flat onto it and look identical to silence.
@@ -809,7 +809,7 @@ export function initReport({ fmt, drBand, peakClass, loudnessVerdict, getPreset,
 
     if (values.length >= 2) {
       const points = decimate(values, xAt, rect.x + padL, plotW, ppx);
-      ctx.lineWidth = 1.5;
+      ctx.lineWidth = lineWidth;
       ctx.lineJoin = 'round';
       // One stroke per run of a single colour: single-hue charts are one run;
       // the DR chart changes colour where it crosses a band boundary.
@@ -1086,7 +1086,7 @@ export function initReport({ fmt, drBand, peakClass, loudnessVerdict, getPreset,
     y += 8;
     drawChartInto(ctx, { x: P, y, w: W - 2 * P, h: chartH - 20 },
       { values: peaks, t0: PEAK_T0, hop: HOP_SEC },
-      { yMin: -40, yMax: 3, step: 10, durationSec, unit: 'dBTP', limit: tpLimit, ppx: 4 });
+      { yMin: -40, yMax: 3, step: 10, durationSec, unit: 'dBTP', limit: tpLimit, ppx: 4, lineWidth: 1 });
     y += chartH - 20;
 
     if (clipLine) {
