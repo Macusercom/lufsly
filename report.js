@@ -757,21 +757,10 @@ export function initReport({ fmt, drBand, peakClass, loudnessVerdict, getPreset,
   //   bandOf — colours the curve per point, echoing the DR bar's bands.
   function drawChartInto(ctx, rect, series, opts) {
     const { values, t0, hop } = series;
-    const { yMax, step, ticks, durationSec, target, limit, unit, bandOf, ppx, lineWidth = 1.5 } = opts;
-
-    // The −40 floor is the useful default and keeps files comparable, but a
-    // quiet recording would clamp flat onto it and look identical to silence.
-    // Drop the floor only when nothing reaches it, keeping a ~20 dB window
-    // around the content so the shape is visible; the changed axis labels are
-    // the signal that this is not the usual scale.
+    const { step, ticks, durationSec, target, limit, unit, bandOf, ppx, lineWidth = 1.5 } = opts;
     let yMin = opts.yMin;
-    if (!ticks && values.length) {
-      let dataMax = -Infinity;
-      for (const v of values) if (isFinite(v) && v > dataMax) dataMax = v;
-      if (isFinite(dataMax) && dataMax < yMin + 3) {
-        yMin = Math.max(-100, Math.floor((dataMax - 20) / 10) * 10);
-      }
-    }
+    let yMax = opts.yMax;
+
     ctx.save();
     ctx.fillStyle = col('--page');
     ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
@@ -782,6 +771,34 @@ export function initReport({ fmt, drBand, peakClass, loudnessVerdict, getPreset,
     const span = durationSec > 0 ? durationSec : 1;
     const xAtTime = (t) => rect.x + padL + Math.min(1, Math.max(0, t / span)) * plotW;
     const xAt = (i) => xAtTime(t0 + i * hop);
+
+    // Decimate before choosing the axis: bucketing is by x only, so this gives
+    // the values that will actually be drawn. Ranging on those, rather than the
+    // raw series, means a brief silence inside a loud column (masked by that
+    // column's maximum) never drags the floor, while a dip that genuinely fills
+    // a column does. Reused for the stroke below so nothing is decimated twice.
+    const points = values.length >= 2 ? decimate(values, xAt, rect.x + padL, plotW, ppx) : [];
+
+    // The default range keeps files comparable, but data outside it must still
+    // be shown rather than clamped flat onto an edge. Fixed-tick charts (DR)
+    // keep their scale; the others extend to fit.
+    if (!ticks && points.length) {
+      let lo = Infinity, hi = -Infinity;
+      for (const pt of points) { if (pt.v < lo) lo = pt.v; if (pt.v > hi) hi = pt.v; }
+      if (target != null) { lo = Math.min(lo, target); hi = Math.max(hi, target); }
+      if (limit != null) { lo = Math.min(lo, limit); hi = Math.max(hi, limit); }
+      if (isFinite(hi) && hi < yMin + 3) {
+        // Everything sits below the floor (a quiet recording): window around it
+        // rather than pinning it to the bottom edge.
+        yMin = Math.max(-120, Math.floor((hi - 20) / 10) * 10);
+      } else if (isFinite(lo)) {
+        // Extend the floor down to include dips below the default.
+        yMin = Math.min(yMin, Math.max(-120, Math.floor(lo / 10) * 10));
+      }
+      // And extend the ceiling up for peaks above it (true peak can exceed 0).
+      if (isFinite(hi)) yMax = Math.max(yMax, Math.ceil(hi / 10) * 10);
+    }
+
     const yAt = (v) => rect.y + padT + (1 - (Math.max(yMin, Math.min(yMax, v)) - yMin) / (yMax - yMin)) * plotH;
 
     ctx.strokeStyle = col('--grid');
@@ -807,8 +824,7 @@ export function initReport({ fmt, drBand, peakClass, loudnessVerdict, getPreset,
 
     drawTimeAxis(ctx, rect, padL, padR, padB, span, xAtTime);
 
-    if (values.length >= 2) {
-      const points = decimate(values, xAt, rect.x + padL, plotW, ppx);
+    if (points.length >= 2) {
       ctx.lineWidth = lineWidth;
       ctx.lineJoin = 'round';
       // One stroke per run of a single colour: single-hue charts are one run;

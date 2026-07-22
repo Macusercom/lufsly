@@ -63,8 +63,6 @@ Then open [http://localhost:8000](http://localhost:8000) in your browser.
 - Reports, charts and the PNG/PDF export are drawn on a `<canvas>`; the PDF is written by hand, so nothing is loaded from a CDN
 - Settings are kept in `localStorage`
 
-No data ever leaves your device. Built as a vibe coding project with [Claude](https://claude.ai).
-
 
 ## Images
 
@@ -75,8 +73,8 @@ No data ever leaves your device. Built as a vibe coding project with [Claude](ht
       <sub><b>Start</b> — drop files and set your targets</sub>
     </td>
     <td width="33%" align="center">
-      <img src="images/image2.png" alt="Analyzed files and report" width="100%"><br>
-      <sub><b>Analysis</b> — batch list, metrics and the three charts</sub>
+      <img src="images/image2.png" alt="Analysis report" width="100%"><br>
+      <sub><b>Analysis</b> — metrics, metadata and the three charts</sub>
     </td>
     <td width="33%" align="center">
       <img src="images/image3.png" alt="Exported report" width="100%"><br>
