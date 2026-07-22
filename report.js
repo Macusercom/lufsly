@@ -645,7 +645,7 @@ export function initReport({ fmt, drBand, peakClass, loudnessVerdict, getPreset,
     drawChartOnScreen('peak-chart', 'peak-tip',
       { values: peaks, t0: PEAK_T0, hop: HOP_SEC },
       { yMin: -40, yMax: 3, step: 10, durationSec: s.durationSec, unit: 'dBTP',
-        limit: tpLimit, fill: false });
+        limit: tpLimit });
     drawChartOnScreen('dr-chart', 'dr-tip', drSeries(entry),
       drChartOpts(model.preset, s.durationSec));
 
@@ -721,26 +721,22 @@ export function initReport({ fmt, drBand, peakClass, loudnessVerdict, getPreset,
   const LOUDNESS_T0 = SHORTTERM_OFFSET * HOP_SEC;
   const PEAK_T0 = HOP_SEC;
 
-  // One point per pixel column, carrying that column's full range. Keeping only
-  // the maximum would erase every dip shorter than a column — on a 35-minute
-  // file a column spans ~37 hops, so seconds-long drops disappeared entirely.
-  // Columns the series does not reach stay empty rather than being interpolated
-  // across, so a chart whose series starts late (loudness at 3 s) keeps its gap.
+  // One point per pixel column, its maximum. A 35-minute file is ~21 k hops
+  // across ~570 px — 37 segments per column is pure overdraw that reads as a
+  // solid block. The hover tooltip still indexes the full series, so nothing is
+  // lost to the reader. Columns the series never reaches stay empty, so a chart
+  // that starts late (loudness at 3 s) keeps its gap rather than interpolating.
   function decimate(values, xAt, plotX0, plotW) {
     const cols = Math.max(1, Math.round(plotW));
-    if (values.length <= cols) {
-      return values.map((v, i) => ({ x: xAt(i), lo: v, hi: v }));
-    }
-    const hi = new Array(cols).fill(-Infinity);
-    const lo = new Array(cols).fill(Infinity);
+    if (values.length <= cols) return values.map((v, i) => ({ x: xAt(i), v }));
+    const max = new Array(cols).fill(-Infinity);
     for (let i = 0; i < values.length; i++) {
       const c = Math.min(cols - 1, Math.max(0, Math.round(xAt(i) - plotX0)));
-      if (values[i] > hi[c]) hi[c] = values[i];
-      if (values[i] < lo[c]) lo[c] = values[i];
+      if (values[i] > max[c]) max[c] = values[i];
     }
     const out = [];
     for (let c = 0; c < cols; c++) {
-      if (hi[c] > -Infinity) out.push({ x: plotX0 + c, lo: lo[c], hi: hi[c] });
+      if (max[c] > -Infinity) out.push({ x: plotX0 + c, v: max[c] });
     }
     return out;
   }
@@ -757,12 +753,9 @@ export function initReport({ fmt, drBand, peakClass, loudnessVerdict, getPreset,
   //   target — the loudness goal: amber reference line, no markers.
   //   limit  — the peak ceiling: red line, plus a dot on every hop above it.
   //   bandOf — colours the curve per point, echoing the DR bar's bands.
-  //   fill   — area down to the floor. Reads as "how much" and suits loudness;
-  //            a peak is an instantaneous maximum, so filling under it implies
-  //            a magnitude that is not there, and it buries the range band.
   function drawChartInto(ctx, rect, series, opts) {
     const { values, t0, hop } = series;
-    const { yMax, step, ticks, durationSec, target, limit, unit, bandOf, fill = true } = opts;
+    const { yMax, step, ticks, durationSec, target, limit, unit, bandOf } = opts;
 
     // The −40 floor is the useful default and keeps files comparable, but a
     // quiet recording would clamp flat onto it and look identical to silence.
@@ -813,62 +806,20 @@ export function initReport({ fmt, drBand, peakClass, loudnessVerdict, getPreset,
     drawTimeAxis(ctx, rect, padL, padR, padB, span, xAtTime);
 
     if (values.length >= 2) {
-      // A 35-minute file is ~21 k hops across ~570 px — 37 line segments per
-      // pixel column, which is pure overdraw and reads as a solid block. Reduce
-      // to one point per column first, keeping each column's maximum since that
-      // is what a peak reading means. The hover tooltip still indexes the full
-      // series, so no resolution is lost to the reader.
       const points = decimate(values, xAt, rect.x + padL, plotW);
-
-      // Soft fill under the curve, then the range itself on top. Where a column
-      // covers many hops the span from its low to its high is what carries the
-      // detail — drawing only one of them flattens every short dip away.
-      const baseY = yAt(yMin);
-      ctx.lineWidth = 1;
+      ctx.lineWidth = 1.5;
       ctx.lineJoin = 'round';
+      // One stroke per run of a single colour: single-hue charts are one run;
+      // the DR chart changes colour where it crosses a band boundary.
       let i = 0;
       while (i < points.length - 1) {
-        const color = bandOf ? bandOf(points[i].hi) : col('--accent');
+        const color = bandOf ? bandOf(points[i].v) : col('--accent');
         let j = i + 1;
-        while (j < points.length - 1 && (!bandOf || bandOf(points[j].hi) === color)) j++;
-
-        // Only single-colour series get the fill. Filling a band-coloured curve
-        // draws each run down to the baseline, so every band change becomes a
-        // hard vertical edge and the chart turns into a barcode.
-        if (fill && !bandOf) {
-          ctx.beginPath();
-          ctx.moveTo(points[i].x, baseY);
-          for (let k = i; k <= j; k++) ctx.lineTo(points[k].x, yAt(points[k].hi));
-          ctx.lineTo(points[j].x, baseY);
-          ctx.closePath();
-          ctx.save();
-          ctx.globalAlpha = 0.22;
-          ctx.fillStyle = color;
-          ctx.fill();
-          ctx.restore();
-        }
-
-        // The lower bound gets its own contour rather than a filled span per
-        // column. A vertical span per pixel column tiles with its neighbours
-        // into a solid wash — that is a fill however faint it is drawn — while
-        // two traces keep the background visible between them and still show
-        // the dips: the lower line rises whenever the quiet moments stop.
-        ctx.save();
-        ctx.globalAlpha = 0.5;
+        while (j < points.length - 1 && (!bandOf || bandOf(points[j].v) === color)) j++;
         ctx.strokeStyle = color;
         ctx.beginPath();
         for (let k = i; k <= j; k++) {
-          const y = yAt(points[k].lo);
-          k === i ? ctx.moveTo(points[k].x, y) : ctx.lineTo(points[k].x, y);
-        }
-        ctx.stroke();
-        ctx.restore();
-
-        // Peak contour on top, at full strength.
-        ctx.strokeStyle = color;
-        ctx.beginPath();
-        for (let k = i; k <= j; k++) {
-          const y = yAt(points[k].hi);
+          const y = yAt(points[k].v);
           k === i ? ctx.moveTo(points[k].x, y) : ctx.lineTo(points[k].x, y);
         }
         ctx.stroke();
@@ -1133,7 +1084,7 @@ export function initReport({ fmt, drBand, peakClass, loudnessVerdict, getPreset,
     y += 8;
     drawChartInto(ctx, { x: P, y, w: W - 2 * P, h: chartH - 20 },
       { values: peaks, t0: PEAK_T0, hop: HOP_SEC },
-      { yMin: -40, yMax: 3, step: 10, durationSec, unit: 'dBTP', limit: tpLimit, fill: false });
+      { yMin: -40, yMax: 3, step: 10, durationSec, unit: 'dBTP', limit: tpLimit });
     y += chartH - 20;
 
     if (clipLine) {
