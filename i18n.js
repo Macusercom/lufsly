@@ -81,6 +81,9 @@ const EN = {
   infoMomentaryMax: 'The loudest 400 ms anywhere in the file. Reveals brief loudness spikes that the integrated value averages away.',
   infoShortTermMax: 'The loudest 3-second stretch anywhere in the file – a good check for passages that jump well above your target.',
   infoCodec: 'The audio format read from the file itself, not from its extension. The bitrate is exact where the file states it (WAV, MP3); \u201cavg\u201d means it was measured as size \u00f7 duration and includes tag and container overhead.',
+  infoLoudnessHistory: 'Short-term loudness (a 3-second window) over the whole file, so you can see where it runs louder or quieter than your target. The dashed line marks the target.',
+  infoPeakHistory: 'The highest True Peak in each moment, in dBTP. The dashed line is your True Peak limit; a marker sits at every point that crosses it. The line drops into the quiet gaps between loud passages.',
+  infoDrHistory: 'Loudness range over a sliding 30-second window \u2014 how much the loudness varies over time. The same colour bands as the meter above: green is a healthy range for your target, amber and red flag too little or too much.',
 
   // ---- verdicts ----
   tooQuiet: 'Too quiet ($DIFF$ LU below target)',
@@ -210,6 +213,9 @@ const DE = {
   infoMomentaryMax: 'Die lautesten 400 ms der gesamten Datei. Zeigt kurze Lautheitsspitzen, die im integrierten Wert untergehen.',
   infoShortTermMax: 'Die lautesten 3 Sekunden der gesamten Datei – gut geeignet, um Passagen zu finden, die deutlich über dem Ziel liegen.',
   infoCodec: 'Das Audioformat, gelesen aus der Datei selbst, nicht aus der Dateiendung. Die Bitrate ist exakt, wenn die Datei sie angibt (WAV, MP3); \u201eavg\u201c bedeutet, sie wurde als Größe ÷ Dauer gemessen und enthält Tag- und Container-Overhead.',
+  infoLoudnessHistory: 'Short-Term-Lautheit (3-Sekunden-Fenster) über die gesamte Datei, sodass du siehst, wo sie lauter oder leiser als dein Ziel läuft. Die gestrichelte Linie markiert das Ziel.',
+  infoPeakHistory: 'Der höchste True Peak pro Moment, in dBTP. Die gestrichelte Linie ist dein True-Peak-Limit; an jeder Überschreitung sitzt eine Markierung. Die Linie fällt in die leisen Pausen zwischen lauten Passagen ab.',
+  infoDrHistory: 'Loudness Range über ein gleitendes 30-Sekunden-Fenster — wie stark die Lautheit über die Zeit schwankt. Dieselben Farbbänder wie im Balken darüber: Grün ist ein guter Bereich für dein Ziel, Gelb und Rot markieren zu wenig oder zu viel.',
 
   tooQuiet: 'Zu leise ($DIFF$ LU unter dem Ziel)',
   justRight: 'Genau richtig für das Ziel',
