@@ -645,7 +645,7 @@ export function initReport({ fmt, drBand, peakClass, loudnessVerdict, getPreset,
     drawChartOnScreen('peak-chart', 'peak-tip',
       { values: peaks, t0: PEAK_T0, hop: HOP_SEC },
       { yMin: -40, yMax: 3, step: 10, durationSec: s.durationSec, unit: 'dBTP',
-        limit: tpLimit });
+        limit: tpLimit, ppx: 4 });
     drawChartOnScreen('dr-chart', 'dr-tip', drSeries(entry),
       drChartOpts(model.preset, s.durationSec));
 
@@ -721,22 +721,24 @@ export function initReport({ fmt, drBand, peakClass, loudnessVerdict, getPreset,
   const LOUDNESS_T0 = SHORTTERM_OFFSET * HOP_SEC;
   const PEAK_T0 = HOP_SEC;
 
-  // One point per pixel column, its maximum. A 35-minute file is ~21 k hops
-  // across ~570 px — 37 segments per column is pure overdraw that reads as a
-  // solid block. The hover tooltip still indexes the full series, so nothing is
-  // lost to the reader. Columns the series never reaches stay empty, so a chart
-  // that starts late (loudness at 3 s) keeps its gap rather than interpolating.
-  function decimate(values, xAt, plotX0, plotW) {
-    const cols = Math.max(1, Math.round(plotW));
+  // One point per pixel column by default, its maximum. A 35-minute file is
+  // ~21 k hops across ~570 px — 37 segments per column is pure overdraw that
+  // reads as a solid block. `ppx` > 1 shortens each column to a fraction of a
+  // pixel, so brief drops (the silences between words on the peak chart) show
+  // as downward spikes instead of being swallowed by the column's maximum. The
+  // hover tooltip still indexes the full series, so no resolution is lost.
+  function decimate(values, xAt, plotX0, plotW, ppx = 1) {
+    const cols = Math.max(1, Math.round(plotW * ppx));
     if (values.length <= cols) return values.map((v, i) => ({ x: xAt(i), v }));
     const max = new Array(cols).fill(-Infinity);
     for (let i = 0; i < values.length; i++) {
-      const c = Math.min(cols - 1, Math.max(0, Math.round(xAt(i) - plotX0)));
+      const frac = (xAt(i) - plotX0) / plotW;               // 0..1 across the plot
+      const c = Math.min(cols - 1, Math.max(0, Math.round(frac * (cols - 1))));
       if (values[i] > max[c]) max[c] = values[i];
     }
     const out = [];
     for (let c = 0; c < cols; c++) {
-      if (max[c] > -Infinity) out.push({ x: plotX0 + c, v: max[c] });
+      if (max[c] > -Infinity) out.push({ x: plotX0 + (c / (cols - 1)) * plotW, v: max[c] });
     }
     return out;
   }
@@ -755,7 +757,7 @@ export function initReport({ fmt, drBand, peakClass, loudnessVerdict, getPreset,
   //   bandOf — colours the curve per point, echoing the DR bar's bands.
   function drawChartInto(ctx, rect, series, opts) {
     const { values, t0, hop } = series;
-    const { yMax, step, ticks, durationSec, target, limit, unit, bandOf } = opts;
+    const { yMax, step, ticks, durationSec, target, limit, unit, bandOf, ppx } = opts;
 
     // The −40 floor is the useful default and keeps files comparable, but a
     // quiet recording would clamp flat onto it and look identical to silence.
@@ -806,7 +808,7 @@ export function initReport({ fmt, drBand, peakClass, loudnessVerdict, getPreset,
     drawTimeAxis(ctx, rect, padL, padR, padB, span, xAtTime);
 
     if (values.length >= 2) {
-      const points = decimate(values, xAt, rect.x + padL, plotW);
+      const points = decimate(values, xAt, rect.x + padL, plotW, ppx);
       ctx.lineWidth = 1.5;
       ctx.lineJoin = 'round';
       // One stroke per run of a single colour: single-hue charts are one run;
@@ -1084,7 +1086,7 @@ export function initReport({ fmt, drBand, peakClass, loudnessVerdict, getPreset,
     y += 8;
     drawChartInto(ctx, { x: P, y, w: W - 2 * P, h: chartH - 20 },
       { values: peaks, t0: PEAK_T0, hop: HOP_SEC },
-      { yMin: -40, yMax: 3, step: 10, durationSec, unit: 'dBTP', limit: tpLimit });
+      { yMin: -40, yMax: 3, step: 10, durationSec, unit: 'dBTP', limit: tpLimit, ppx: 4 });
     y += chartH - 20;
 
     if (clipLine) {
