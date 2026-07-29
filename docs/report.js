@@ -124,6 +124,98 @@ function sniffSampleRate(data) {
   return null;
 }
 
+// Channel count read straight from the container header, so the caller can
+// estimate how large the decoded PCM will be *before* committing to a decode
+// that, for a long surround file, would allocate gigabytes and crash the tab.
+// Returns null when the count cannot be sniffed cheaply; the caller then treats
+// the file as stereo, which is the smallest realistic case and never
+// over-refuses a plain podcast.
+function sniffChannels(data) {
+  const b = new Uint8Array(data);
+  const dv = new DataView(data);
+  const tag = (o, s) => String.fromCharCode(...b.subarray(o, o + s.length)) === s;
+  if (b.length < 16) return null;
+
+  // WAV / RIFF: channel count is a 16-bit field in the fmt chunk.
+  if (tag(0, 'RIFF') && tag(8, 'WAVE')) {
+    let o = 12;
+    while (o + 8 <= b.length) {
+      const size = dv.getUint32(o + 4, true);
+      if (tag(o, 'fmt ')) return dv.getUint16(o + 10, true);
+      o += 8 + size + (size & 1);
+    }
+    return null;
+  }
+
+  // FLAC STREAMINFO: the 3-bit channel field (stored value + 1) sits just after
+  // the 20-bit sample rate that sniffSampleRate reads from the same bytes.
+  if (tag(0, 'fLaC') && b.length > 30) {
+    return ((b[20] >> 1) & 0x07) + 1;
+  }
+
+  // Ogg: Opus and Vorbis both carry the channel count one byte into their
+  // identification header (offset +9 and +11 respectively).
+  if (tag(0, 'OggS')) {
+    for (let o = 0; o < Math.min(b.length - 16, 65536); o++) {
+      if (tag(o, 'OpusHead')) return b[o + 9];
+      if (b[o] === 0x01 && tag(o + 1, 'vorbis')) return b[o + 11];
+    }
+    return null;
+  }
+
+  // MP4 / M4A: the mp4a audio sample entry states the channel count 20 bytes
+  // past its type tag (after the reserved, data-reference, version, revision
+  // and vendor fields). Encoders write the real count here, 6 for 5.1.
+  const mp4a = (() => {
+    const end = Math.min(b.length - 24, 1 << 24);
+    for (let i = 0; i <= end; i++) if (tag(i, 'mp4a')) return i;
+    return -1;
+  })();
+  if (mp4a >= 0) return dv.getUint16(mp4a + 20, false);
+
+  // MP3: the channel-mode bits — 3 (11) means single channel, anything else is
+  // two-channel (stereo / joint-stereo / dual).
+  let o = 0;
+  if (tag(0, 'ID3')) o = 10 + ((b[6] << 21) | (b[7] << 14) | (b[8] << 7) | b[9]);
+  for (let i = o; i < Math.min(b.length - 4, o + 65536); i++) {
+    if (b[i] !== 0xff || (b[i + 1] & 0xe0) !== 0xe0) continue;
+    if (((b[i + 2] >> 2) & 0x03) === 3) continue;
+    return ((b[i + 3] >> 6) & 0x03) === 3 ? 1 : 2;
+  }
+  return null;
+}
+
+// A decoded AudioBuffer is uncompressed 32-bit float PCM, so its size is
+// duration × sample rate × channels × 4 bytes — independent of how small the
+// compressed file is. decodeAudioData allocates all of it at once, and Chrome
+// OOM-kills the whole tab (its "Aw, Snap" page) long before any try/catch can
+// run. A full-length surround movie is several gigabytes of PCM, so the only
+// safe course is to refuse it up front. This budget still admits a multi-hour
+// stereo podcast (~1.4 GB at 2 h / 48 kHz) while rejecting the surround files
+// that actually crash. Tunable — it is a headroom guess, not a hard device fact.
+const MAX_DECODE_BYTES = 2e9;
+
+// Metadata-only probe for a file's playback duration, the one figure the header
+// sniffers do not cheaply yield for every format. preload="metadata" reads just
+// the container index, not the audio, so this stays cheap even for a big file.
+function probeDuration(file) {
+  return new Promise((resolve) => {
+    const el = document.createElement('audio');
+    el.preload = 'metadata';
+    const url = URL.createObjectURL(file);
+    const done = (v) => { URL.revokeObjectURL(url); el.src = ''; resolve(v); };
+    el.onloadedmetadata = () => done(isFinite(el.duration) ? el.duration : null);
+    el.onerror = () => done(null);
+    el.src = url;
+  });
+}
+
+// Thrown by analyzeFile when a decode would blow the memory budget, so the
+// caller can tell "too large" apart from an ordinary decode failure.
+export class FileTooLargeError extends Error {
+  constructor() { super('file too large to decode'); this.name = 'FileTooLargeError'; }
+}
+
 // What the file actually is, plus whatever it says about itself: read from the
 // container rather than trusted from the extension or the browser's MIME guess.
 // Walks the same headers as sniffSampleRate. Returns { codec, meta } where meta
@@ -361,13 +453,26 @@ export async function analyzeFile(file, onProgress) {
   const rate = sniffSampleRate(data);
   const format = sniffFormat(data);
 
+  // Refuse a file whose decoded PCM would exceed the memory budget before the
+  // decode allocates it — otherwise Chrome OOM-kills the tab. Duration is the
+  // only missing factor; when it cannot be probed the guard is skipped rather
+  // than guessing, so nothing that decodes today is newly turned away.
+  const duration = await probeDuration(file);
+  if (duration) {
+    const channels = sniffChannels(data) || 2;
+    if (duration * (rate || 48000) * channels * 4 > MAX_DECODE_BYTES) {
+      throw new FileTooLargeError();
+    }
+  }
+
   let buffer;
   if (rate >= 3000 && rate <= 768000) {
-    // decodeAudioData detaches the buffer, so hand it a copy — the fallback
-    // below still needs the original bytes.
+    // decodeAudioData detaches the buffer it is given, so the sniffed-rate
+    // attempt consumes `data`; the rare fallback re-reads the file rather than
+    // us keeping a full duplicate of it in memory the whole time.
     const off = new OfflineAudioContext(1, 1, rate);
     try {
-      buffer = await off.decodeAudioData(data.slice(0));
+      buffer = await off.decodeAudioData(data);
     } catch {
       buffer = null; // sniffed wrong, or the browser refused the rate
     }
@@ -375,7 +480,7 @@ export async function analyzeFile(file, onProgress) {
   if (!buffer) {
     const ctx = new AudioContext();
     try {
-      buffer = await ctx.decodeAudioData(data);
+      buffer = await ctx.decodeAudioData(data.byteLength ? data : await file.arrayBuffer());
     } finally {
       ctx.close();
     }

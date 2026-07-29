@@ -21,6 +21,7 @@ const EN = {
   decoding: 'Decoding $NAME$…',
   queueWaiting: '$N$ more waiting',
   decodeError: 'Could not decode this file.',
+  fileTooLarge: 'Too large to analyze in the browser — a full-length surround file needs gigabytes of memory. Try a shorter clip or a stereo export.',
 
   // ---- targets ----
   targetsTitle: 'Targets',
@@ -156,6 +157,7 @@ const DE = {
   decoding: 'Dekodiere $NAME$…',
   queueWaiting: 'noch $N$ in der Warteschlange',
   decodeError: 'Diese Datei konnte nicht dekodiert werden.',
+  fileTooLarge: 'Zu groß für die Analyse im Browser – eine abendfüllende Surround-Datei benötigt mehrere Gigabyte Speicher. Nimm einen kürzeren Ausschnitt oder einen Stereo-Export.',
 
   targetsTitle: 'Ziele',
   targetsHint: 'Deine Ziele werden in diesem Browser gespeichert und auf jede Analyse angewendet. Änderungen werden sofort neu bewertet.',

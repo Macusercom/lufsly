@@ -1,7 +1,7 @@
 // LUFSly Web — app shell: targets, local settings, file queue.
 
 import { msg, initLang, onLangChange } from './i18n.js';
-import { analyzeFile, initReport } from './report.js';
+import { analyzeFile, initReport, FileTooLargeError } from './report.js';
 
 const $ = (id) => document.getElementById(id);
 const SETTINGS_KEY = 'lufsly-settings';
@@ -337,10 +337,12 @@ async function drainPending() {
       activeId = entry.id;
       renderQueue();
       report.show(entry);
-    } catch {
-      // Unsupported codec or corrupt file: report it and keep going so one
-      // bad file does not abort the rest of the batch.
-      setError(`${shortName(file.name)}: ${msg('decodeError')}`);
+    } catch (e) {
+      // A file too large to decode gets its own message; anything else is an
+      // unsupported codec or corrupt file. Either way, report it and keep going
+      // so one bad file does not abort the rest of the batch.
+      const reason = e instanceof FileTooLargeError ? msg('fileTooLarge') : msg('decodeError');
+      setError(`${shortName(file.name)}: ${reason}`);
       await new Promise((r) => setTimeout(r, 1200));
     }
   }
